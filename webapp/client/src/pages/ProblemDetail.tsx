@@ -6,9 +6,12 @@ import type { SolutionHistoryEntry } from '../lib/api';
 import type { ProblemDetail as ProblemDetailT } from '../lib/types';
 import DifficultyBadge from '../components/DifficultyBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { parseExamples, parseJsSignature } from '../lib/exampleParser';
+import { parseExamples, parseJsSignature, parsePySignature } from '../lib/exampleParser';
 import { runJsAgainstCases } from '../lib/runCode';
+import { runPyAgainstCases } from '../lib/runPyCode';
 import type { RunResult } from '../lib/runner.worker';
+
+const RUNNABLE_LANGS = ['javascript', 'python3'];
 
 const MONACO_LANG: Record<string, string> = {
   python3: 'python',
@@ -194,9 +197,13 @@ export default function ProblemDetail() {
     setHistory((h) => h.filter((e) => e.id !== entryId));
   }
 
-  const signature = useMemo(() => (language === 'javascript' ? parseJsSignature(code) : null), [code, language]);
+  const signature = useMemo(() => {
+    if (language === 'javascript') return parseJsSignature(code);
+    if (language === 'python3') return parsePySignature(code);
+    return null;
+  }, [code, language]);
   const cases = useMemo(
-    () => (problem && language === 'javascript' ? parseExamples(problem.examples, signature) : []),
+    () => (problem && RUNNABLE_LANGS.includes(language) ? parseExamples(problem.examples, signature) : []),
     [problem, language, signature]
   );
 
@@ -207,7 +214,10 @@ export default function ProblemDetail() {
     }
     setRunning(true);
     setResults(null);
-    const r = await runJsAgainstCases(code, signature.name, cases);
+    const r =
+      language === 'python3'
+        ? await runPyAgainstCases(code, signature.name, cases)
+        : await runJsAgainstCases(code, signature.name, cases);
     setResults(r);
     setRunning(false);
   }
@@ -361,12 +371,12 @@ export default function ProblemDetail() {
           <button onClick={saveSolutionSnapshot} disabled={savingSolution}>
             {savingSolution ? 'Saving…' : 'Save Solution'}
           </button>
-          <button className="run-btn" onClick={runCode} disabled={language !== 'javascript' || running}>
+          <button className="run-btn" onClick={runCode} disabled={!RUNNABLE_LANGS.includes(language) || running}>
             {running ? 'Running…' : 'Run'}
           </button>
         </div>
-        {language !== 'javascript' && (
-          <div className="run-note">Auto-run only works for JavaScript in v1 — other languages save your code but don't execute it here.</div>
+        {!RUNNABLE_LANGS.includes(language) && (
+          <div className="run-note">Auto-run works for JavaScript and Python here — other languages save your code but don't execute it.</div>
         )}
 
         <div

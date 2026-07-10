@@ -52,6 +52,53 @@ export function parseJsSignature(jsSnippet: string): { name: string; params: str
   return null;
 }
 
+/** Extracts method name and parameter names from a python3 snippet like `def twoSum(self, nums: List[int], target: int) -> List[int]:`. */
+export function parsePySignature(pySnippet: string): { name: string; params: string[] } | null {
+  const match = pySnippet.match(/def\s+(\w+)\s*\(\s*self\s*,?\s*([^)]*)\)/);
+  if (!match) return null;
+  const params = splitTopLevel(match[2])
+    .map((p) => p.split(':')[0].split('=')[0].trim())
+    .filter(Boolean);
+  return { name: match[1], params };
+}
+
+/**
+ * Rewrites a JS-literal source expression (as pulled from example text, e.g. `[2,7,11,15]`,
+ * `true`, `null`) into valid Python syntax. Arrays/numbers/strings are already valid Python;
+ * only bareword `true`/`false`/`null` need to become `True`/`False`/`None`. Scans char-by-char
+ * (like `splitTopLevel`) so words inside string literals are never touched.
+ */
+export function jsLiteralToPyLiteral(src: string): string {
+  let result = '';
+  let inStr: string | null = null;
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (inStr) {
+      result += c;
+      if (c === inStr && src[i - 1] !== '\\') inStr = null;
+      i++;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      inStr = c;
+      result += c;
+      i++;
+      continue;
+    }
+    const wordMatch = /^(true|false|null)\b/.exec(src.slice(i));
+    if (wordMatch) {
+      const word = wordMatch[1];
+      result += word === 'true' ? 'True' : word === 'false' ? 'False' : 'None';
+      i += word.length;
+      continue;
+    }
+    result += c;
+    i++;
+  }
+  return result;
+}
+
 /** Parses `Input: a = [...], b = "..."` into ordered name/value-source pairs. */
 function parseInputAssignments(inputSrc: string): { name: string; source: string }[] {
   const pairs = splitTopLevel(inputSrc);
