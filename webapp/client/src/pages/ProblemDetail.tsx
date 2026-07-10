@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
-import { fetchProblem, saveCode, saveProgress } from '../lib/api';
+import { fetchProblem, saveCode, saveProgress, fetchSolutionHistory, saveSolution, deleteSolution } from '../lib/api';
+import type { SolutionHistoryEntry } from '../lib/api';
 import type { ProblemDetail as ProblemDetailT } from '../lib/types';
 import DifficultyBadge from '../components/DifficultyBadge';
 import { parseExamples, parseJsSignature } from '../lib/exampleParser';
@@ -30,7 +31,7 @@ const MONACO_LANG: Record<string, string> = {
   elixir: 'elixir',
 };
 
-type Tab = 'description' | 'editorial' | 'hints' | 'notes';
+type Tab = 'description' | 'editorial' | 'hints' | 'history' | 'notes';
 
 export default function ProblemDetail() {
   const { id = '' } = useParams();
@@ -44,6 +45,9 @@ export default function ProblemDetail() {
   const [results, setResults] = useState<RunResult[] | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [history, setHistory] = useState<SolutionHistoryEntry[]>([]);
+  const [savingSolution, setSavingSolution] = useState(false);
 
   const [leftPct, setLeftPct] = useState(() => Number(localStorage.getItem('detailLeftPct')) || 50);
   const [editorHeight, setEditorHeight] = useState(() => Number(localStorage.getItem('detailEditorHeight')) || 420);
@@ -112,6 +116,7 @@ export default function ProblemDetail() {
     setResults(null);
     setRevealedHints(0);
     setTab('description');
+    setHistory([]);
     fetchProblem(id).then((p) => {
       setProblem(p);
       setNotes(p.progress.notes || '');
@@ -120,6 +125,7 @@ export default function ProblemDetail() {
       setLanguage(initialLang);
       setCode(p.savedCode[initialLang] ?? p.code_snippets[initialLang] ?? '');
     });
+    fetchSolutionHistory(id).then(setHistory).catch(console.error);
   }, [id]);
 
   function switchLanguage(lang: string) {
@@ -155,6 +161,29 @@ export default function ProblemDetail() {
 
   function onNotesBlur() {
     saveProgress(id, { notes });
+  }
+
+  async function saveSolutionSnapshot() {
+    setSavingSolution(true);
+    try {
+      const entry = await saveSolution(id, language, code);
+      setHistory((h) => [entry, ...h]);
+    } finally {
+      setSavingSolution(false);
+    }
+  }
+
+  function restoreHistoryEntry(entry: SolutionHistoryEntry) {
+    setLanguage(entry.language);
+    setCode(entry.code);
+    setResults(null);
+    setSaveStatus('saving');
+    saveCode(id, entry.language, entry.code).then(() => setSaveStatus('saved'));
+  }
+
+  async function deleteHistoryEntry(entryId: string) {
+    await deleteSolution(id, entryId);
+    setHistory((h) => h.filter((e) => e.id !== entryId));
   }
 
   const signature = useMemo(() => (language === 'javascript' ? parseJsSignature(code) : null), [code, language]);
@@ -210,6 +239,9 @@ export default function ProblemDetail() {
           {problem.hints.length > 0 ? (
             <button className={tab === 'hints' ? 'tab active' : 'tab'} onClick={() => setTab('hints')}>Hints</button>
           ) : null}
+          <button className={tab === 'history' ? 'tab active' : 'tab'} onClick={() => setTab('history')}>
+            History{history.length > 0 ? ` (${history.length})` : ''}
+          </button>
           <button className={tab === 'notes' ? 'tab active' : 'tab'} onClick={() => setTab('notes')}>My Notes</button>
         </div>
 
@@ -270,6 +302,29 @@ export default function ProblemDetail() {
             </div>
           )}
 
+          {tab === 'history' && (
+            <div className="history-tab">
+              {history.length === 0 && (
+                <div className="results-empty">
+                  No saved solutions yet. Click "Save Solution" next to the editor to snapshot your current code.
+                </div>
+              )}
+              {history.map((entry) => (
+                <details key={entry.id} className="history-entry">
+                  <summary>
+                    <span className="topic-chip">{entry.language}</span>
+                    <span className="history-timestamp">{new Date(entry.createdAt).toLocaleString()}</span>
+                  </summary>
+                  <pre className="example-text history-code">{entry.code}</pre>
+                  <div className="history-actions">
+                    <button onClick={() => restoreHistoryEntry(entry)}>Restore into editor</button>
+                    <button onClick={() => deleteHistoryEntry(entry.id)}>Delete</button>
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
+
           {tab === 'notes' && (
             <div className="notes-tab">
               <textarea
@@ -295,6 +350,9 @@ export default function ProblemDetail() {
             {languages.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
           <span className="save-status">{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : ''}</span>
+          <button onClick={saveSolutionSnapshot} disabled={savingSolution}>
+            {savingSolution ? 'Saving…' : 'Save Solution'}
+          </button>
           <button className="run-btn" onClick={runCode} disabled={language !== 'javascript' || running}>
             {running ? 'Running…' : 'Run'}
           </button>

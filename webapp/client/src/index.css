@@ -343,3 +343,20 @@ h2 { font-size: 18px; margin: 0; }
 .login-info { color: var(--easy); font-size: 13px; }
 .login-toggle { background: none; border: none; color: var(--text-dim); font-size: 12px; text-decoration: underline; }
 .login-toggle:hover { color: var(--accent); border-color: transparent; }
+
+/* Solution history */
+.history-entry {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+}
+.history-entry summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.history-timestamp { color: var(--text-dim); font-size: 12px; }
+.history-code { margin-top: 10px; max-height: 300px; overflow-y: auto; }
+.history-actions { display: flex; gap: 8px; margin-top: 10px; }

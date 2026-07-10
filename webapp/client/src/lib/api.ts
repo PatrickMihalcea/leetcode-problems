@@ -1,6 +1,18 @@
 import type { ProblemDetail, ProblemListResponse, ProblemSummary, Stats } from './types';
 import { loadIndex, loadProblemFile, resolveProblemId, type IndexEntry } from './dataStore';
-import { getAllProgress, getProgress, getSavedCode, saveCode as saveCodeRemote, saveProgress as saveProgressRemote } from './userProgress';
+import {
+  getAllProgress,
+  getProgress,
+  getSavedCode,
+  saveCode as saveCodeRemote,
+  saveProgress as saveProgressRemote,
+  getSolutionHistory,
+  saveSolutionSnapshot,
+  deleteSolutionSnapshot,
+  type SolutionHistoryEntry,
+} from './userProgress';
+
+export type { SolutionHistoryEntry };
 
 export interface ListParams {
   search?: string;
@@ -105,4 +117,19 @@ export async function saveProgress(
 ): Promise<void> {
   const problemId = await resolveProblemId(id);
   await saveProgressRemote(problemId, patch);
+}
+
+export async function fetchSolutionHistory(id: string): Promise<SolutionHistoryEntry[]> {
+  const problemId = await resolveProblemId(id);
+  return getSolutionHistory(problemId);
+}
+
+export async function saveSolution(id: string, language: string, code: string): Promise<SolutionHistoryEntry> {
+  const problemId = await resolveProblemId(id);
+  return saveSolutionSnapshot(problemId, language, code);
+}
+
+export async function deleteSolution(id: string, entryId: string): Promise<void> {
+  const problemId = await resolveProblemId(id);
+  await deleteSolutionSnapshot(problemId, entryId);
 }

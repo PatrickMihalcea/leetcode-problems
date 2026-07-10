@@ -122,3 +122,65 @@ export async function saveCode(problemId: string, language: string, code: string
   existing[language] = code;
   savedCodeCache.set(problemId, existing);
 }
+
+export interface SolutionHistoryEntry {
+  id: string;
+  language: string;
+  code: string;
+  createdAt: string;
+}
+
+const historyCache = new Map<string, SolutionHistoryEntry[]>();
+
+export async function getSolutionHistory(problemId: string): Promise<SolutionHistoryEntry[]> {
+  if (historyCache.has(problemId)) return historyCache.get(problemId)!;
+  if (!supabaseConfigured) return [];
+
+  const { data, error } = await supabase
+    .from('solution_history')
+    .select('id, language, code, created_at')
+    .eq('problem_id', problemId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const entries: SolutionHistoryEntry[] = (data ?? []).map((row) => ({
+    id: row.id,
+    language: row.language,
+    code: row.code,
+    createdAt: row.created_at,
+  }));
+  historyCache.set(problemId, entries);
+  return entries;
+}
+
+export async function saveSolutionSnapshot(
+  problemId: string,
+  language: string,
+  code: string
+): Promise<SolutionHistoryEntry> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('solution_history')
+    .insert({ user_id: userId, problem_id: problemId, language, code })
+    .select('id, language, code, created_at')
+    .single();
+  if (error) throw error;
+
+  const entry: SolutionHistoryEntry = {
+    id: data.id,
+    language: data.language,
+    code: data.code,
+    createdAt: data.created_at,
+  };
+  const existing = historyCache.get(problemId) ?? [];
+  historyCache.set(problemId, [entry, ...existing]);
+  return entry;
+}
+
+export async function deleteSolutionSnapshot(problemId: string, entryId: string): Promise<void> {
+  const { error } = await supabase.from('solution_history').delete().eq('id', entryId);
+  if (error) throw error;
+
+  const existing = historyCache.get(problemId);
+  if (existing) historyCache.set(problemId, existing.filter((e) => e.id !== entryId));
+}

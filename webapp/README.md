@@ -23,9 +23,10 @@ directly to Supabase from the browser.
 You only need to do this once, the first time you set this up.
 
 1. **Create a free Supabase project** at [supabase.com](https://supabase.com).
-2. In the project's **SQL Editor**, run the contents of [`supabase/schema.sql`](supabase/schema.sql)
-   once. This creates the `progress` and `saved_code` tables with Row Level Security policies
-   scoping each row to its owner.
+2. In the project's **SQL Editor**, run the contents of [`supabase/schema.sql`](supabase/schema.sql).
+   This creates the `progress`, `saved_code`, and `solution_history` tables with Row Level
+   Security policies scoping each row to its owner. Safe to re-run in full any time this file
+   changes — table creation and policies are idempotent.
 3. In **Project Settings -> API**, copy the **Project URL** and the **anon public key**.
 4. In your GitHub repo, go to **Settings -> Secrets and variables -> Actions** and add two
    repository secrets:
@@ -63,6 +64,10 @@ Opens at http://localhost:5173, reads/writes the same Supabase project as the ho
 - "Run" executes JavaScript solutions in a sandboxed Web Worker against the problem's examples
   and shows pass/fail. Other languages save but don't execute (v1 scope).
 - Mark problems solved/starred; notes tab for your own write-up per problem.
+- "Save Solution" snapshots your current code as a new timestamped entry in that problem's
+  History tab — keep as many solutions per problem as you want, expand any past entry to view
+  its code, restore it back into the editor, or delete it. Separate from the continuous
+  autosave of your current draft, so history only grows when you explicitly save one.
 
 ## Known limitations
 
