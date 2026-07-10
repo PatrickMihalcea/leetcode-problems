@@ -2,6 +2,13 @@
 
 This repository provides a dataset of LeetCode problems in JSON format. Each problem is saved as a separate `.json` file within the `problems/` directory, and all problems are also combined in a single `merged_problems.json` file for easy access.
 
+## Web app
+
+This repo also includes **LeetLocal**, a LeetCode-style app (browse, filter, write and run
+solutions) built on this dataset, hosted 24/7 on GitHub Pages and synced through a free
+Supabase project so your progress follows you across machines. See
+[webapp/README.md](webapp/README.md) for one-time setup and local development.
+
 ## Dataset Structure
 
 - `problems/`: Contains individual LeetCode problems as separate `.json` files. Each file is named with the problem's ID and a slug (e.g., `0001-two-sum.json`).
