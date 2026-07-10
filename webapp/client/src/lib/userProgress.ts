@@ -4,9 +4,10 @@ export interface ProgressState {
   solved: boolean;
   starred: boolean;
   notes: string;
+  solvedAt: string | null;
 }
 
-const DEFAULT_PROGRESS: ProgressState = { solved: false, starred: false, notes: '' };
+const DEFAULT_PROGRESS: ProgressState = { solved: false, starred: false, notes: '', solvedAt: null };
 
 const progressCache = new Map<string, ProgressState>();
 let bulkLoaded = false;
@@ -27,13 +28,14 @@ async function loadAllProgress(): Promise<void> {
         bulkLoaded = true;
         return;
       }
-      const { data, error } = await supabase.from('progress').select('problem_id, solved, starred, notes');
+      const { data, error } = await supabase.from('progress').select('problem_id, solved, starred, notes, solved_at');
       if (error) throw error;
       for (const row of data ?? []) {
         progressCache.set(row.problem_id, {
           solved: !!row.solved,
           starred: !!row.starred,
           notes: row.notes ?? '',
+          solvedAt: row.solved_at ?? null,
         });
       }
       bulkLoaded = true;
@@ -54,12 +56,12 @@ export async function getProgress(problemId: string): Promise<ProgressState> {
 
   const { data, error } = await supabase
     .from('progress')
-    .select('solved, starred, notes')
+    .select('solved, starred, notes, solved_at')
     .eq('problem_id', problemId)
     .maybeSingle();
   if (error) throw error;
   const state: ProgressState = data
-    ? { solved: !!data.solved, starred: !!data.starred, notes: data.notes ?? '' }
+    ? { solved: !!data.solved, starred: !!data.starred, notes: data.notes ?? '', solvedAt: data.solved_at ?? null }
     : DEFAULT_PROGRESS;
   progressCache.set(problemId, state);
   return state;
@@ -73,6 +75,11 @@ export async function saveProgress(
   const merged: ProgressState = { ...current, ...patch };
   const userId = await requireUserId();
 
+  // Only stamp/clear solvedAt when this call is the one toggling `solved` —
+  // editing notes or starring an already-solved problem must not shift its solved date.
+  const solvedAt = 'solved' in patch ? (merged.solved ? new Date().toISOString() : null) : current.solvedAt;
+  merged.solvedAt = solvedAt;
+
   const { error } = await supabase.from('progress').upsert(
     {
       user_id: userId,
@@ -80,6 +87,7 @@ export async function saveProgress(
       solved: merged.solved,
       starred: merged.starred,
       notes: merged.notes,
+      solved_at: solvedAt,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id,problem_id' }

@@ -11,9 +11,13 @@ create table if not exists progress (
   solved boolean not null default false,
   starred boolean not null default false,
   notes text not null default '',
+  solved_at timestamptz,
   updated_at timestamptz not null default now(),
   primary key (user_id, problem_id)
 );
+
+-- Added after the initial release, for existing databases created before this column existed.
+alter table progress add column if not exists solved_at timestamptz;
 
 -- Your current in-progress draft per problem/language, overwritten as you type.
 create table if not exists saved_code (

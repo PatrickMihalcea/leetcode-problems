@@ -5,6 +5,7 @@ import { fetchProblem, saveCode, saveProgress, fetchSolutionHistory, saveSolutio
 import type { SolutionHistoryEntry } from '../lib/api';
 import type { ProblemDetail as ProblemDetailT } from '../lib/types';
 import DifficultyBadge from '../components/DifficultyBadge';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { parseExamples, parseJsSignature } from '../lib/exampleParser';
 import { runJsAgainstCases } from '../lib/runCode';
 import type { RunResult } from '../lib/runner.worker';
@@ -48,6 +49,7 @@ export default function ProblemDetail() {
 
   const [history, setHistory] = useState<SolutionHistoryEntry[]>([]);
   const [savingSolution, setSavingSolution] = useState(false);
+  const [showSaveOnSolve, setShowSaveOnSolve] = useState(false);
 
   const [leftPct, setLeftPct] = useState(() => Number(localStorage.getItem('detailLeftPct')) || 50);
   const [editorHeight, setEditorHeight] = useState(() => Number(localStorage.getItem('detailEditorHeight')) || 420);
@@ -150,6 +152,12 @@ export default function ProblemDetail() {
     const solved = !problem.progress.solved;
     await saveProgress(id, { solved });
     setProblem({ ...problem, progress: { ...problem.progress, solved } });
+    if (solved) setShowSaveOnSolve(true);
+  }
+
+  async function saveSolutionOnSolve() {
+    setShowSaveOnSolve(false);
+    await saveSolutionSnapshot();
   }
 
   async function toggleStarred() {
@@ -403,6 +411,16 @@ export default function ProblemDetail() {
           ))}
         </div>
       </div>
+
+      {showSaveOnSolve && (
+        <ConfirmDialog
+          message="Save your current solution?"
+          confirmLabel="Save"
+          cancelLabel="Don't save"
+          onConfirm={saveSolutionOnSolve}
+          onCancel={() => setShowSaveOnSolve(false)}
+        />
+      )}
     </div>
   );
 }

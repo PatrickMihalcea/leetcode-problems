@@ -55,8 +55,19 @@ h2 { font-size: 18px; margin: 0; }
   border-bottom: 1px solid var(--border);
 }
 .app-header h2 { margin: 0; color: var(--accent); }
-.app-header { display: flex; justify-content: space-between; align-items: center; }
+.app-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .header-actions { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-dim); }
+
+.app-nav { display: flex; gap: 4px; flex: 1; }
+.nav-link {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.nav-link:hover { color: var(--text); text-decoration: none; }
+.nav-link.active { color: var(--accent); background: var(--bg-elevated); }
 
 .page {
   max-width: 1100px;
@@ -360,3 +371,108 @@ h2 { font-size: 18px; margin: 0; }
 .history-timestamp { color: var(--text-dim); font-size: 12px; }
 .history-code { margin-top: 10px; max-height: 300px; overflow-y: auto; }
 .history-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+/* Confirm dialog */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.dialog-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 360px;
+  width: 90%;
+}
+.dialog-box p { margin: 0 0 16px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-confirm { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+/* Dashboard */
+.dashboard-page h1 { margin-bottom: 18px; }
+
+.dashboard-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.stat-tile {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.stat-tile-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.stat-tile-value { font-size: 24px; font-weight: 600; }
+.stat-tile-of { font-size: 14px; font-weight: 400; color: var(--text-dim); }
+
+.stat-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.stat-dot-easy { background: var(--easy); }
+.stat-dot-medium { background: var(--medium); }
+.stat-dot-hard { background: var(--hard); }
+
+.dashboard-empty-note {
+  color: var(--text-dim);
+  font-size: 13px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+
+.range-filter { display: flex; gap: 6px; margin-bottom: 12px; }
+.range-btn { font-size: 12px; padding: 5px 10px; }
+.range-btn.active { color: var(--accent); border-color: var(--accent); background: var(--bg-elevated); }
+
+.chart-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.chart-card h2 { margin-bottom: 12px; color: var(--text); }
+
+.dashboard-footnote { color: var(--text-dim); font-size: 12px; margin-top: 4px; }
+
+/* Charts (hand-rolled SVG, shared by TrendChart / ActivityChart) */
+.chart-wrap { position: relative; width: 100%; }
+.chart-svg { display: block; overflow: visible; }
+.chart-gridline { stroke: var(--border); stroke-width: 1; }
+.chart-axis-label { fill: var(--text-dim); font-size: 11px; }
+.chart-crosshair { stroke: var(--border); stroke-width: 1; }
+
+.chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+.chart-tooltip-value { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text); }
+.chart-tooltip-key { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.chart-tooltip-label { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+
+@media (max-width: 640px) {
+  .dashboard-tiles { grid-template-columns: repeat(2, 1fr); }
+}

@@ -88,6 +88,45 @@ export async function fetchTopics(): Promise<string[]> {
   return [...set].sort();
 }
 
+export interface CompletionEntry {
+  problemId: string;
+  frontendId: string;
+  title: string;
+  difficulty: string;
+  solvedAt: string;
+}
+
+export interface CompletionHistory {
+  entries: CompletionEntry[];
+  /** Solved problems with no recorded solve date (marked solved before date-tracking was added). */
+  untrackedSolved: number;
+}
+
+export async function fetchCompletionHistory(): Promise<CompletionHistory> {
+  const [index, progressMap] = await Promise.all([loadIndex(), getAllProgress()]);
+  const entries: CompletionEntry[] = [];
+  let untrackedSolved = 0;
+
+  for (const p of index) {
+    const progress = progressMap.get(p.problem_id);
+    if (!progress?.solved) continue;
+    if (progress.solvedAt) {
+      entries.push({
+        problemId: p.problem_id,
+        frontendId: p.frontend_id,
+        title: p.title,
+        difficulty: p.difficulty,
+        solvedAt: progress.solvedAt,
+      });
+    } else {
+      untrackedSolved += 1;
+    }
+  }
+
+  entries.sort((a, b) => a.solvedAt.localeCompare(b.solvedAt));
+  return { entries, untrackedSolved };
+}
+
 export async function fetchStats(): Promise<Stats> {
   const [index, progressMap] = await Promise.all([loadIndex(), getAllProgress()]);
   const byDifficulty = new Map<string, { difficulty: string; total: number; solved: number }>();

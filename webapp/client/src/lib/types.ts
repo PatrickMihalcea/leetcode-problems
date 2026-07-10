@@ -31,7 +31,7 @@ export interface ProblemDetail {
   hints: string[];
   code_snippets: Record<string, string>;
   solutions: string;
-  progress: { solved: boolean; starred: boolean; notes: string };
+  progress: { solved: boolean; starred: boolean; notes: string; solvedAt: string | null };
   savedCode: Record<string, string>;
 }
 

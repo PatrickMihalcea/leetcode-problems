@@ -1,6 +1,7 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, NavLink } from 'react-router-dom';
 import ProblemList from './pages/ProblemList';
 import ProblemDetail from './pages/ProblemDetail';
+import Dashboard from './pages/Dashboard';
 import Login from './components/Login';
 import { useAuth } from './lib/AuthProvider';
 import { supabaseConfigured } from './lib/supabaseClient';
@@ -20,6 +21,14 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h2>LeetLocal</h2>
+        <nav className="app-nav">
+          <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            Problems
+          </NavLink>
+          <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            Dashboard
+          </NavLink>
+        </nav>
         {session && (
           <div className="header-actions">
             <span className="header-email">{session.user.email}</span>
@@ -31,6 +40,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ProblemList />} />
           <Route path="/problem/:id" element={<ProblemDetail />} />
+          <Route path="/dashboard" element={<Dashboard />} />
         </Routes>
       </main>
     </div>
