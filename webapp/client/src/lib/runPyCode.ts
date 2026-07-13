@@ -16,7 +16,7 @@ export function runPyAgainstCases(
   }));
 
   return new Promise((resolve) => {
-    const worker = new Worker(new URL('./runner.pyworker.ts', import.meta.url));
+    const worker = new Worker(new URL('./runner.pyworker.ts', import.meta.url), { type: 'module' });
     let settled = false;
 
     const finish = (results: RunResult[]) => {

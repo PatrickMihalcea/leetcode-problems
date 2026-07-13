@@ -13,9 +13,6 @@ export interface PyRunRequest {
   cases: PyRunCase[];
 }
 
-declare function importScripts(...urls: string[]): void;
-declare function loadPyodide(opts: { indexURL: string }): Promise<any>;
-
 const PYODIDE_VERSION = '314.0.2';
 // Try multiple CDNs in case one is blocked by an ad blocker, VPN, or corporate firewall.
 const PYODIDE_BASES = [
@@ -25,48 +22,37 @@ const PYODIDE_BASES = [
 
 const PREAMBLE = 'from typing import *\nimport json, collections, heapq, math, functools, itertools, bisect, re, string\n\n';
 
-// Some network/security tools flag importScripts() specifically (it's tagged as a
-// "script" resource load), even when a plain fetch of the same URL is allowed. Try the
-// normal path first, then fall back to fetching the source as text and eval'ing it.
-async function loadScriptViaFetch(url: string): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const source = await res.text();
-  (0, eval)(source);
-}
-
+// Pyodide's classic pyodide.js build relies on importScripts(), which some browsers/managed
+// environments now block or don't support in worker contexts ("Classic web workers are not
+// supported" is Chrome's own message when importScripts is disallowed here). This worker
+// therefore runs as a module worker (see runPyCode.ts's `new Worker(..., { type: 'module' })`)
+// and loads Pyodide's ESM build (pyodide.mjs) via dynamic import instead.
 let pyodideReady: Promise<any> | null = null;
 function getPyodide(): Promise<any> {
   if (!pyodideReady) {
     pyodideReady = (async () => {
+      let loadPyodideFn: ((opts: { indexURL: string }) => Promise<any>) | null = null;
       let loadedBase: string | null = null;
       const errors: string[] = [];
 
       for (const base of PYODIDE_BASES) {
         try {
-          importScripts(`${base}pyodide.js`);
+          const mod = await import(/* @vite-ignore */ `${base}pyodide.mjs`);
+          loadPyodideFn = mod.loadPyodide;
           loadedBase = base;
           break;
         } catch (err) {
-          errors.push(`${base} via importScripts: ${(err as Error)?.message ?? err}`);
-        }
-
-        try {
-          await loadScriptViaFetch(`${base}pyodide.js`);
-          loadedBase = base;
-          break;
-        } catch (err) {
-          errors.push(`${base} via fetch: ${(err as Error)?.message ?? err}`);
+          errors.push(`${base}: ${(err as Error)?.message ?? err}`);
         }
       }
 
-      if (!loadedBase) {
+      if (!loadPyodideFn || !loadedBase) {
         throw new Error(
           `Could not load the Python runtime from any CDN. This usually means a network or security ` +
-            `policy is blocking script loads to cdn.jsdelivr.net / unpkg.com. Errors: ${errors.join(' | ')}`
+            `policy is blocking module loads to cdn.jsdelivr.net / unpkg.com. Errors: ${errors.join(' | ')}`
         );
       }
-      return loadPyodide({ indexURL: loadedBase });
+      return loadPyodideFn({ indexURL: loadedBase });
     })();
   }
   return pyodideReady;
