@@ -7,11 +7,13 @@ import type { ProblemDetail as ProblemDetailT } from '../lib/types';
 import DifficultyBadge from '../components/DifficultyBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { parseExamples, parseJsSignature, parsePySignature } from '../lib/exampleParser';
+import { parseJavaSignature } from '../lib/javaSignature';
 import { runJsAgainstCases } from '../lib/runCode';
 import { runPyAgainstCases } from '../lib/runPyCode';
+import { runJavaAgainstCases } from '../lib/runJavaCode';
 import type { RunResult } from '../lib/runner.worker';
 
-const RUNNABLE_LANGS = ['javascript', 'python3'];
+const RUNNABLE_LANGS = ['javascript', 'python3', 'java'];
 
 const MONACO_LANG: Record<string, string> = {
   python3: 'python',
@@ -204,11 +206,13 @@ export default function ProblemDetail() {
     setHistory((h) => h.filter((e) => e.id !== entryId));
   }
 
+  const javaSignature = useMemo(() => (language === 'java' ? parseJavaSignature(code) : null), [code, language]);
   const signature = useMemo(() => {
     if (language === 'javascript') return parseJsSignature(code);
     if (language === 'python3') return parsePySignature(code);
+    if (language === 'java') return javaSignature ? { name: javaSignature.name, params: javaSignature.params.map((p) => p.name) } : null;
     return null;
-  }, [code, language]);
+  }, [code, language, javaSignature]);
   const cases = useMemo(
     () => (problem && RUNNABLE_LANGS.includes(language) ? parseExamples(problem.examples, signature) : []),
     [problem, language, signature]
@@ -224,7 +228,9 @@ export default function ProblemDetail() {
     const r =
       language === 'python3'
         ? await runPyAgainstCases(code, signature.name, cases)
-        : await runJsAgainstCases(code, signature.name, cases);
+        : language === 'java'
+          ? await runJavaAgainstCases(code, javaSignature!, cases)
+          : await runJsAgainstCases(code, signature.name, cases);
     setResults(r);
     setRunning(false);
   }
@@ -389,7 +395,13 @@ export default function ProblemDetail() {
           </button>
         </div>
         {!RUNNABLE_LANGS.includes(language) && (
-          <div className="run-note">Auto-run works for JavaScript and Python here — other languages save your code but don't execute it.</div>
+          <div className="run-note">Auto-run works for JavaScript, Python, and Java here — other languages save your code but don't execute it.</div>
+        )}
+        {language === 'java' && running && (
+          <div className="run-note">
+            Compiling &amp; running Java in-browser — first run downloads the compiler (~20MB+) and can take a while.
+            Java code can't be safely cancelled once started; if this seems stuck, reloading the page is the only way to stop it.
+          </div>
         )}
 
         <div

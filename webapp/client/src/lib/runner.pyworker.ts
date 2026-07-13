@@ -25,29 +25,49 @@ const PYODIDE_BASES = [
 
 const PREAMBLE = 'from typing import *\nimport json, collections, heapq, math, functools, itertools, bisect, re, string\n\n';
 
+// Some network/security tools flag importScripts() specifically (it's tagged as a
+// "script" resource load), even when a plain fetch of the same URL is allowed. Try the
+// normal path first, then fall back to fetching the source as text and eval'ing it.
+async function loadScriptViaFetch(url: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const source = await res.text();
+  (0, eval)(source);
+}
+
 let pyodideReady: Promise<any> | null = null;
 function getPyodide(): Promise<any> {
   if (!pyodideReady) {
-    let loadedBase: string | null = null;
-    let lastError: unknown = null;
-    for (const base of PYODIDE_BASES) {
-      try {
-        importScripts(`${base}pyodide.js`);
-        loadedBase = base;
-        break;
-      } catch (err) {
-        lastError = err;
+    pyodideReady = (async () => {
+      let loadedBase: string | null = null;
+      const errors: string[] = [];
+
+      for (const base of PYODIDE_BASES) {
+        try {
+          importScripts(`${base}pyodide.js`);
+          loadedBase = base;
+          break;
+        } catch (err) {
+          errors.push(`${base} via importScripts: ${(err as Error)?.message ?? err}`);
+        }
+
+        try {
+          await loadScriptViaFetch(`${base}pyodide.js`);
+          loadedBase = base;
+          break;
+        } catch (err) {
+          errors.push(`${base} via fetch: ${(err as Error)?.message ?? err}`);
+        }
       }
-    }
-    pyodideReady = loadedBase
-      ? loadPyodide({ indexURL: loadedBase })
-      : Promise.reject(
-          new Error(
-            `Could not load the Python runtime from any CDN (tried ${PYODIDE_BASES.length}). ` +
-              `This usually means an ad blocker, VPN, or network firewall is blocking cdn.jsdelivr.net / unpkg.com. ` +
-              `Last error: ${(lastError as Error)?.message ?? lastError}`
-          )
+
+      if (!loadedBase) {
+        throw new Error(
+          `Could not load the Python runtime from any CDN. This usually means a network or security ` +
+            `policy is blocking script loads to cdn.jsdelivr.net / unpkg.com. Errors: ${errors.join(' | ')}`
         );
+      }
+      return loadPyodide({ indexURL: loadedBase });
+    })();
   }
   return pyodideReady;
 }
