@@ -1,5 +1,6 @@
 import type { RunResult } from './runner.worker';
 import type { JavaSignature } from './javaSignature';
+import { parseJavaClassName } from './javaSignature';
 import { buildJavaProgram, isJavaSignatureSupported, type JavaCase } from './javaDriver';
 
 declare const cheerpjInit: (opts?: any) => Promise<void>;
@@ -143,13 +144,17 @@ async function runJavaAgainstCasesInner(
       'This problem uses a type not supported by Java auto-run yet (only int/long/double/boolean/char/String, their arrays, and List<Integer|String>/List<List<Integer>> are supported).'
     );
   }
+  const className = parseJavaClassName(code);
+  if (!className) {
+    return errorResults(cases, 'Could not find a class declaration in your code.');
+  }
 
   onProgress?.('loading-runtime');
   onProgress?.('downloading-compiler');
   const [, toolsJar] = await Promise.all([ensureCheerpj(), ensureToolsJar()]);
   cheerpjAddStringFile('/str/tools.jar', toolsJar);
 
-  const program = buildJavaProgram(code, signature, cases);
+  const program = buildJavaProgram(code, className, signature, cases);
   cheerpjAddStringFile('/str/Main.java', new TextEncoder().encode(program));
 
   const consoleEl = document.getElementById('console')!;

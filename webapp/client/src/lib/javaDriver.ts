@@ -44,7 +44,7 @@ function escapeForLine(v: string): string {
  * every case and prints one `__CASE__<num>|<PASS|FAIL|ERROR>|<actual>|<expected>|<error>` line
  * per case to stdout (read back out of CheerpJ's `#console` DOM element by the caller).
  */
-export function buildJavaProgram(userCode: string, signature: JavaSignature, cases: JavaCase[]): string {
+export function buildJavaProgram(userCode: string, className: string, signature: JavaSignature, cases: JavaCase[]): string {
   const { name, returnType } = signature;
 
   const caseBlocks = cases.map((c, i) => {
@@ -57,7 +57,7 @@ export function buildJavaProgram(userCode: string, signature: JavaSignature, cas
 
     return (
       `        try {\n` +
-      `            ${returnType} ${actualVar} = new Solution().${name}(${args});\n` +
+      `            ${returnType} ${actualVar} = new ${className}().${name}(${args});\n` +
       `            ${returnType} ${expectedVar} = (${expectedLiteral});\n` +
       `            boolean __pass${i} = ${equalityExpr(returnType, actualVar, expectedVar)};\n` +
       `            System.out.println("__CASE__${c.exampleNum}|" + (__pass${i} ? "PASS" : "FAIL") + "|" + ${actualStr} + "|" + ${expectedStr} + "|");\n` +
@@ -67,9 +67,14 @@ export function buildJavaProgram(userCode: string, signature: JavaSignature, cas
     );
   });
 
+  // Our source file is always named Main.java, so at most zero top-level classes in this
+  // compilation unit may be `public` (javac requires the public class's name to match the
+  // filename) — strip it from the user's class declaration; same-file visibility is unaffected.
+  const userCodeNoPublicClass = userCode.replace(/\bpublic\s+(class\s+\w+)/, '$1');
+
   return (
     `import java.util.*;\n\n` +
-    `${userCode}\n\n` +
+    `${userCodeNoPublicClass}\n\n` +
     `class Main {\n` +
     `    public static void main(String[] args) throws Exception {\n` +
     `${caseBlocks.join('')}` +

@@ -28,7 +28,12 @@ export function isSupportedJavaType(type: string): boolean {
 export function parseJavaSignature(javaSnippet: string): JavaSignature | null {
   const match = javaSnippet.match(/public\s+([\w<>[\],\s]+?)\s+(\w+)\s*\(([^)]*)\)/);
   if (!match) return null;
-  const [, returnType, name, rawParams] = match;
+  const [, rawReturnType, name, rawParams] = match;
+
+  // group 1 may include leading modifiers (static/final/abstract/...) since they're made of the
+  // same word characters as a type — the actual return type is always the last token, since
+  // modifiers never contain whitespace themselves but can precede one that does.
+  const returnType = rawReturnType.trim().split(/\s+/).pop()!;
 
   const params: JavaParam[] = [];
   for (const raw of splitTopLevel(rawParams)) {
@@ -38,5 +43,13 @@ export function parseJavaSignature(javaSnippet: string): JavaSignature | null {
     params.push({ type: raw.slice(0, idx).trim(), name: raw.slice(idx + 1).trim() });
   }
 
-  return { name, returnType: returnType.trim(), params };
+  return { name, returnType, params };
+}
+
+/** Extracts the top-level class name from a `java` snippet (e.g. `Solution` from
+ *  `class Solution {` or `public class Foo {`) — used instead of assuming the class is always
+ *  literally named `Solution`, so renaming it doesn't break auto-run. */
+export function parseJavaClassName(javaSnippet: string): string | null {
+  const match = javaSnippet.match(/\bclass\s+(\w+)/);
+  return match ? match[1] : null;
 }
