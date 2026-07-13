@@ -10,7 +10,7 @@ import { parseExamples, parseJsSignature, parsePySignature } from '../lib/exampl
 import { parseJavaSignature } from '../lib/javaSignature';
 import { runJsAgainstCases } from '../lib/runCode';
 import { runPyAgainstCases } from '../lib/runPyCode';
-import { runJavaAgainstCases } from '../lib/runJavaCode';
+import { runJavaAgainstCases, type JavaProgress } from '../lib/runJavaCode';
 import type { RunResult } from '../lib/runner.worker';
 
 const RUNNABLE_LANGS = ['javascript', 'python3', 'java'];
@@ -41,6 +41,13 @@ type Tab = 'description' | 'editorial' | 'hints' | 'history' | 'notes';
 
 const LANGUAGE_STORAGE_KEY = 'detailLanguage';
 
+const JAVA_PHASE_LABELS: Record<JavaProgress, string> = {
+  'loading-runtime': 'Loading the Java runtime…',
+  'downloading-compiler': 'Downloading the Java compiler (first run only, ~20MB+)…',
+  compiling: 'Compiling…',
+  running: 'Running…',
+};
+
 export default function ProblemDetail() {
   const { id = '' } = useParams();
   const [problem, setProblem] = useState<ProblemDetailT | null>(null);
@@ -50,6 +57,7 @@ export default function ProblemDetail() {
   const [revealedHints, setRevealedHints] = useState(0);
   const [notes, setNotes] = useState('');
   const [running, setRunning] = useState(false);
+  const [javaPhase, setJavaPhase] = useState<JavaProgress | null>(null);
   const [results, setResults] = useState<RunResult[] | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -225,19 +233,39 @@ export default function ProblemDetail() {
     }
     setRunning(true);
     setResults(null);
-    const r =
-      language === 'python3'
-        ? await runPyAgainstCases(code, signature.name, cases)
-        : language === 'java'
-          ? await runJavaAgainstCases(code, javaSignature!, cases)
-          : await runJsAgainstCases(code, signature.name, cases);
-    setResults(r);
-    setRunning(false);
+    setJavaPhase(null);
+    try {
+      const r =
+        language === 'python3'
+          ? await runPyAgainstCases(code, signature.name, cases)
+          : language === 'java'
+            ? await runJavaAgainstCases(code, javaSignature!, cases, setJavaPhase)
+            : await runJsAgainstCases(code, signature.name, cases);
+      setResults(r);
+    } catch (err) {
+      setResults(
+        cases.map((c) => ({
+          exampleNum: c.exampleNum,
+          pass: null,
+          actual: '',
+          expected: c.outputSource,
+          error: `Unexpected error: ${(err as Error).message}`,
+        }))
+      );
+    } finally {
+      setRunning(false);
+      setJavaPhase(null);
+    }
   }
 
   if (!problem) return <div className="page">Loading...</div>;
 
-  const languages = Object.keys(problem.code_snippets);
+  const languages = Object.keys(problem.code_snippets).sort((a, b) => {
+    const aRunnable = RUNNABLE_LANGS.includes(a);
+    const bRunnable = RUNNABLE_LANGS.includes(b);
+    if (aRunnable !== bRunnable) return aRunnable ? -1 : 1;
+    return 0;
+  });
 
   return (
     <div className="detail-layout" ref={layoutRef}>
@@ -391,7 +419,7 @@ export default function ProblemDetail() {
             {savingSolution ? 'Saving…' : 'Save Solution'}
           </button>
           <button className="run-btn" onClick={runCode} disabled={!RUNNABLE_LANGS.includes(language) || running}>
-            {running ? 'Running…' : 'Run'}
+            {running ? (language === 'java' && javaPhase ? JAVA_PHASE_LABELS[javaPhase] : 'Running…') : 'Run'}
           </button>
         </div>
         {!RUNNABLE_LANGS.includes(language) && (
@@ -399,8 +427,8 @@ export default function ProblemDetail() {
         )}
         {language === 'java' && running && (
           <div className="run-note">
-            Compiling &amp; running Java in-browser — first run downloads the compiler (~20MB+) and can take a while.
-            Java code can't be safely cancelled once started; if this seems stuck, reloading the page is the only way to stop it.
+            {javaPhase ? JAVA_PHASE_LABELS[javaPhase] : 'Starting…'} Java code can't be safely cancelled once started —
+            if this seems stuck for more than ~30s, reloading the page is the only way to stop it.
           </div>
         )}
 

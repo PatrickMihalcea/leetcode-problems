@@ -8,9 +8,21 @@ declare const cheerpjCreateDisplay: (width: number, height: number, target: HTML
 declare const cheerpjAddStringFile: (path: string, data: string | Uint8Array) => void;
 
 const LOADER_URL = 'https://cjrtnc.leaningtech.com/4.3/loader.js';
-const TOOLS_JAR_URL = 'https://cdn.jsdelivr.net/gh/leaningtech/javafiddle@main/static/tools.jar';
+// jsdelivr (both the gh- and npm-based CDNs) returns 403 for this file — confirmed by hand, not
+// assumed. unpkg and raw.githubusercontent both serve it fine with correct CORS headers, so try
+// those, in order, falling back if one is unreachable (blocked, down, etc).
+const TOOLS_JAR_URLS = [
+  'https://unpkg.com/dataslope-tools-jar@1.0.0/tools.jar',
+  'https://raw.githubusercontent.com/leaningtech/javafiddle/main/static/tools.jar',
+];
 const CLASSPATH = '/str/tools.jar:/files/';
 const TIMEOUT_MS = 30000;
+
+export type JavaProgress =
+  | 'loading-runtime'
+  | 'downloading-compiler'
+  | 'compiling'
+  | 'running';
 
 let cheerpjReady: Promise<void> | null = null;
 function ensureCheerpj(): Promise<void> {
@@ -49,10 +61,19 @@ function ensureCheerpj(): Promise<void> {
 let toolsJarReady: Promise<Uint8Array> | null = null;
 function ensureToolsJar(): Promise<Uint8Array> {
   if (!toolsJarReady) {
-    toolsJarReady = fetch(TOOLS_JAR_URL).then(async (res) => {
-      if (!res.ok) throw new Error(`Failed to download the Java compiler (tools.jar): HTTP ${res.status}`);
-      return new Uint8Array(await res.arrayBuffer());
-    });
+    toolsJarReady = (async () => {
+      const errors: string[] = [];
+      for (const url of TOOLS_JAR_URLS) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return new Uint8Array(await res.arrayBuffer());
+        } catch (err) {
+          errors.push(`${url}: ${(err as Error).message}`);
+        }
+      }
+      throw new Error(`Failed to download the Java compiler (tools.jar) from any source:\n${errors.join('\n')}`);
+    })();
   }
   return toolsJarReady;
 }
@@ -110,7 +131,12 @@ function errorResults(cases: JavaCase[], message: string): RunResult[] {
   return cases.map((c) => ({ exampleNum: c.exampleNum, pass: null, actual: '', expected: c.outputSource, error: message }));
 }
 
-async function runJavaAgainstCasesInner(code: string, signature: JavaSignature, cases: JavaCase[]): Promise<RunResult[]> {
+async function runJavaAgainstCasesInner(
+  code: string,
+  signature: JavaSignature,
+  cases: JavaCase[],
+  onProgress?: (phase: JavaProgress) => void
+): Promise<RunResult[]> {
   if (!isJavaSignatureSupported(signature)) {
     return errorResults(
       cases,
@@ -118,6 +144,8 @@ async function runJavaAgainstCasesInner(code: string, signature: JavaSignature, 
     );
   }
 
+  onProgress?.('loading-runtime');
+  onProgress?.('downloading-compiler');
   const [, toolsJar] = await Promise.all([ensureCheerpj(), ensureToolsJar()]);
   cheerpjAddStringFile('/str/tools.jar', toolsJar);
 
@@ -127,19 +155,28 @@ async function runJavaAgainstCasesInner(code: string, signature: JavaSignature, 
   const consoleEl = document.getElementById('console')!;
   consoleEl.innerText = '';
 
+  onProgress?.('compiling');
   const compileCode = await cheerpjRunMain('com.sun.tools.javac.Main', CLASSPATH, '/str/Main.java', '-d', '/files/');
   if (compileCode !== 0) {
     return errorResults(cases, `Compile error:\n${consoleEl.innerText || '(no compiler output)'}`);
   }
 
   consoleEl.innerText = '';
+  onProgress?.('running');
   await cheerpjRunMain('Main', CLASSPATH);
   return parseConsoleLines(consoleEl.innerText, cases);
 }
 
-export function runJavaAgainstCases(code: string, signature: JavaSignature, cases: JavaCase[]): Promise<RunResult[]> {
+export function runJavaAgainstCases(
+  code: string,
+  signature: JavaSignature,
+  cases: JavaCase[],
+  onProgress?: (phase: JavaProgress) => void
+): Promise<RunResult[]> {
   return Promise.race([
-    runJavaAgainstCasesInner(code, signature, cases),
+    runJavaAgainstCasesInner(code, signature, cases, onProgress).catch((err: Error) =>
+      errorResults(cases, `Java auto-run failed: ${err.message}`)
+    ),
     new Promise<RunResult[]>((resolve) =>
       setTimeout(
         () =>
