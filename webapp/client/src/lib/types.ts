@@ -30,7 +30,7 @@ export interface ProblemDetail {
   follow_ups: string[];
   hints: string[];
   code_snippets: Record<string, string>;
-  solutions: string;
+  solution: string;
   progress: { solved: boolean; starred: boolean; notes: string; solvedAt: string | null };
   savedCode: Record<string, string>;
 }

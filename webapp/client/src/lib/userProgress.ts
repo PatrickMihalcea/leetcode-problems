@@ -192,3 +192,96 @@ export async function deleteSolutionSnapshot(problemId: string, entryId: string)
   const existing = historyCache.get(problemId);
   if (existing) historyCache.set(problemId, existing.filter((e) => e.id !== entryId));
 }
+
+export interface CustomTestCase {
+  id: string;
+  inputText: string;
+  outputText: string;
+  createdAt: string;
+}
+
+const customCasesCache = new Map<string, CustomTestCase[]>();
+
+export async function getCustomTestCases(problemId: string): Promise<CustomTestCase[]> {
+  if (customCasesCache.has(problemId)) return customCasesCache.get(problemId)!;
+  if (!supabaseConfigured) return [];
+
+  const { data, error } = await supabase
+    .from('custom_test_cases')
+    .select('id, input_text, output_text, created_at')
+    .eq('problem_id', problemId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+
+  const entries: CustomTestCase[] = (data ?? []).map((row) => ({
+    id: row.id,
+    inputText: row.input_text,
+    outputText: row.output_text,
+    createdAt: row.created_at,
+  }));
+  customCasesCache.set(problemId, entries);
+  return entries;
+}
+
+export async function addCustomTestCase(
+  problemId: string,
+  inputText: string,
+  outputText: string
+): Promise<CustomTestCase> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('custom_test_cases')
+    .insert({ user_id: userId, problem_id: problemId, input_text: inputText, output_text: outputText })
+    .select('id, input_text, output_text, created_at')
+    .single();
+  if (error) throw error;
+
+  const entry: CustomTestCase = {
+    id: data.id,
+    inputText: data.input_text,
+    outputText: data.output_text,
+    createdAt: data.created_at,
+  };
+  const existing = customCasesCache.get(problemId) ?? [];
+  customCasesCache.set(problemId, [...existing, entry]);
+  return entry;
+}
+
+export async function updateCustomTestCase(
+  problemId: string,
+  entryId: string,
+  inputText: string,
+  outputText: string
+): Promise<CustomTestCase> {
+  const { data, error } = await supabase
+    .from('custom_test_cases')
+    .update({ input_text: inputText, output_text: outputText })
+    .eq('id', entryId)
+    .select('id, input_text, output_text, created_at')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    throw new Error(
+      'Update failed (no row was returned) — this usually means the "update" permission for custom test cases is ' +
+        'missing. Re-run the latest webapp/supabase/schema.sql in your Supabase project\'s SQL Editor.'
+    );
+  }
+
+  const entry: CustomTestCase = {
+    id: data.id,
+    inputText: data.input_text,
+    outputText: data.output_text,
+    createdAt: data.created_at,
+  };
+  const existing = customCasesCache.get(problemId);
+  if (existing) customCasesCache.set(problemId, existing.map((e) => (e.id === entryId ? entry : e)));
+  return entry;
+}
+
+export async function removeCustomTestCase(problemId: string, entryId: string): Promise<void> {
+  const { error } = await supabase.from('custom_test_cases').delete().eq('id', entryId);
+  if (error) throw error;
+
+  const existing = customCasesCache.get(problemId);
+  if (existing) customCasesCache.set(problemId, existing.filter((e) => e.id !== entryId));
+}

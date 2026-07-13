@@ -42,9 +42,24 @@ create table if not exists solution_history (
 create index if not exists solution_history_user_problem_idx
   on solution_history (user_id, problem_id, created_at desc);
 
+-- Custom test cases you add on top of a problem's built-in examples -- shared across languages,
+-- since the input/output are stored as language-agnostic literal syntax (same as examples).
+create table if not exists custom_test_cases (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  problem_id text not null,
+  input_text text not null,
+  output_text text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists custom_test_cases_user_problem_idx
+  on custom_test_cases (user_id, problem_id, created_at);
+
 alter table progress enable row level security;
 alter table saved_code enable row level security;
 alter table solution_history enable row level security;
+alter table custom_test_cases enable row level security;
 
 drop policy if exists "Users manage their own progress" on progress;
 create policy "Users manage their own progress"
@@ -72,4 +87,25 @@ create policy "Users insert their own solution history"
 drop policy if exists "Users delete their own solution history" on solution_history;
 create policy "Users delete their own solution history"
   on solution_history for delete
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users read their own custom test cases" on custom_test_cases;
+create policy "Users read their own custom test cases"
+  on custom_test_cases for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users insert their own custom test cases" on custom_test_cases;
+create policy "Users insert their own custom test cases"
+  on custom_test_cases for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users update their own custom test cases" on custom_test_cases;
+create policy "Users update their own custom test cases"
+  on custom_test_cases for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users delete their own custom test cases" on custom_test_cases;
+create policy "Users delete their own custom test cases"
+  on custom_test_cases for delete
   using (auth.uid() = user_id);

@@ -100,7 +100,7 @@ export function jsLiteralToPyLiteral(src: string): string {
 }
 
 /** Parses `Input: a = [...], b = "..."` into ordered name/value-source pairs. */
-function parseInputAssignments(inputSrc: string): { name: string; source: string }[] {
+export function parseInputAssignments(inputSrc: string): { name: string; source: string }[] {
   const pairs = splitTopLevel(inputSrc);
   const result: { name: string; source: string }[] = [];
   for (const pair of pairs) {
@@ -113,6 +113,21 @@ function parseInputAssignments(inputSrc: string): { name: string; source: string
     }
   }
   return result;
+}
+
+/** Reorders name/value-source pairs to match a function signature's declared parameter order,
+ * when the names line up 1:1 — otherwise leaves them in the order they were written. */
+export function orderArgsBySignature(
+  assignments: { name: string; source: string }[],
+  signature: { name: string; params: string[] } | null
+): { name: string; source: string }[] {
+  if (signature && signature.params.length === assignments.length) {
+    const byName = new Map(assignments.map((a) => [a.name, a]));
+    if (signature.params.every((p) => byName.has(p))) {
+      return signature.params.map((p) => byName.get(p)!);
+    }
+  }
+  return assignments;
 }
 
 /**
@@ -128,14 +143,7 @@ export function parseExamples(examples: Example[], signature: { name: string; pa
     const [, inputSrc, outputSrc] = match;
     const assignments = parseInputAssignments(inputSrc);
     if (assignments.length === 0) continue;
-
-    let ordered = assignments;
-    if (signature && signature.params.length === assignments.length) {
-      const byName = new Map(assignments.map((a) => [a.name, a]));
-      if (signature.params.every((p) => byName.has(p))) {
-        ordered = signature.params.map((p) => byName.get(p)!);
-      }
-    }
+    const ordered = orderArgsBySignature(assignments, signature);
 
     cases.push({
       exampleNum: ex.example_num,
@@ -146,4 +154,29 @@ export function parseExamples(examples: Example[], signature: { name: string; pa
     });
   }
   return cases;
+}
+
+/**
+ * Builds a `ParsedCase` from a user-entered custom test case (an "Input" field like
+ * `nums = [2,7,11,15], target = 9` and an "Output" field like `[0,1]`) — same literal syntax as
+ * example blocks, so it runs through the exact same per-language translation. Returns `null` if
+ * no `name = value` pairs could be parsed out of the input text.
+ */
+export function buildCustomCase(
+  inputText: string,
+  outputText: string,
+  exampleNum: number,
+  signature: { name: string; params: string[] } | null
+): ParsedCase | null {
+  const assignments = parseInputAssignments(inputText);
+  if (assignments.length === 0) return null;
+  const ordered = orderArgsBySignature(assignments, signature);
+
+  return {
+    exampleNum,
+    argNames: ordered.map((a) => a.name),
+    argSources: ordered.map((a) => a.source),
+    outputSource: outputText.trim(),
+    raw: `Input: ${inputText}\nOutput: ${outputText}`,
+  };
 }

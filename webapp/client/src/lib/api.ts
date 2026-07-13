@@ -9,10 +9,15 @@ import {
   getSolutionHistory,
   saveSolutionSnapshot,
   deleteSolutionSnapshot,
+  getCustomTestCases,
+  addCustomTestCase as addCustomTestCaseRemote,
+  updateCustomTestCase as updateCustomTestCaseRemote,
+  removeCustomTestCase,
   type SolutionHistoryEntry,
+  type CustomTestCase,
 } from './userProgress';
 
-export type { SolutionHistoryEntry };
+export type { SolutionHistoryEntry, CustomTestCase };
 
 export interface ListParams {
   search?: string;
@@ -171,4 +176,29 @@ export async function saveSolution(id: string, language: string, code: string): 
 export async function deleteSolution(id: string, entryId: string): Promise<void> {
   const problemId = await resolveProblemId(id);
   await deleteSolutionSnapshot(problemId, entryId);
+}
+
+export async function fetchCustomTestCases(id: string): Promise<CustomTestCase[]> {
+  const problemId = await resolveProblemId(id);
+  return getCustomTestCases(problemId);
+}
+
+export async function addCustomTestCase(id: string, inputText: string, outputText: string): Promise<CustomTestCase> {
+  const problemId = await resolveProblemId(id);
+  return addCustomTestCaseRemote(problemId, inputText, outputText);
+}
+
+export async function updateCustomTestCase(
+  id: string,
+  entryId: string,
+  inputText: string,
+  outputText: string
+): Promise<CustomTestCase> {
+  const problemId = await resolveProblemId(id);
+  return updateCustomTestCaseRemote(problemId, entryId, inputText, outputText);
+}
+
+export async function deleteCustomTestCase(id: string, entryId: string): Promise<void> {
+  const problemId = await resolveProblemId(id);
+  await removeCustomTestCase(problemId, entryId);
 }

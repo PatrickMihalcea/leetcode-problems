@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
-import { fetchProblem, saveCode, saveProgress, fetchSolutionHistory, saveSolution, deleteSolution } from '../lib/api';
-import type { SolutionHistoryEntry } from '../lib/api';
+import {
+  fetchProblem,
+  saveCode,
+  saveProgress,
+  fetchSolutionHistory,
+  saveSolution,
+  deleteSolution,
+  fetchCustomTestCases,
+  addCustomTestCase,
+  updateCustomTestCase,
+  deleteCustomTestCase,
+} from '../lib/api';
+import type { SolutionHistoryEntry, CustomTestCase } from '../lib/api';
 import type { ProblemDetail as ProblemDetailT } from '../lib/types';
 import DifficultyBadge from '../components/DifficultyBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { parseExamples, parseJsSignature, parsePySignature } from '../lib/exampleParser';
+import { parseExamples, parseJsSignature, parsePySignature, parseInputAssignments, buildCustomCase } from '../lib/exampleParser';
 import { parseJavaSignature } from '../lib/javaSignature';
 import { runJsAgainstCases } from '../lib/runCode';
 import { runPyAgainstCases } from '../lib/runPyCode';
@@ -37,7 +48,7 @@ const MONACO_LANG: Record<string, string> = {
   elixir: 'elixir',
 };
 
-type Tab = 'description' | 'editorial' | 'hints' | 'history' | 'notes';
+type Tab = 'description' | 'testcases' | 'solution' | 'hints' | 'history' | 'notes';
 
 const LANGUAGE_STORAGE_KEY = 'detailLanguage';
 
@@ -65,6 +76,20 @@ export default function ProblemDetail() {
   const [history, setHistory] = useState<SolutionHistoryEntry[]>([]);
   const [savingSolution, setSavingSolution] = useState(false);
   const [showSaveOnSolve, setShowSaveOnSolve] = useState(false);
+
+  const [customCases, setCustomCases] = useState<CustomTestCase[]>([]);
+  const [newCaseValues, setNewCaseValues] = useState<Record<string, string>>({});
+  const [newCaseRawInput, setNewCaseRawInput] = useState('');
+  const [newCaseOutput, setNewCaseOutput] = useState('');
+  const [caseError, setCaseError] = useState<string | null>(null);
+  const [addingCase, setAddingCase] = useState(false);
+
+  const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Record<string, string>>({});
+  const [editRawInput, setEditRawInput] = useState('');
+  const [editOutput, setEditOutput] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const [leftPct, setLeftPct] = useState(() => Number(localStorage.getItem('detailLeftPct')) || 50);
   const [editorHeight, setEditorHeight] = useState(() => Number(localStorage.getItem('detailEditorHeight')) || 420);
@@ -134,6 +159,16 @@ export default function ProblemDetail() {
     setRevealedHints(0);
     setTab('description');
     setHistory([]);
+    setCustomCases([]);
+    setNewCaseValues({});
+    setNewCaseRawInput('');
+    setNewCaseOutput('');
+    setCaseError(null);
+    setEditingCaseId(null);
+    setEditValues({});
+    setEditRawInput('');
+    setEditOutput('');
+    setEditError(null);
     fetchProblem(id).then((p) => {
       setProblem(p);
       setNotes(p.progress.notes || '');
@@ -146,6 +181,7 @@ export default function ProblemDetail() {
       setCode(p.savedCode[initialLang] ?? p.code_snippets[initialLang] ?? '');
     });
     fetchSolutionHistory(id).then(setHistory).catch(console.error);
+    fetchCustomTestCases(id).then(setCustomCases).catch(console.error);
   }, [id]);
 
   function switchLanguage(lang: string) {
@@ -214,6 +250,77 @@ export default function ProblemDetail() {
     setHistory((h) => h.filter((e) => e.id !== entryId));
   }
 
+  async function addTestCase(paramNames: string[]) {
+    setCaseError(null);
+    const inputText =
+      paramNames.length > 0
+        ? paramNames.map((name) => `${name} = ${newCaseValues[name] ?? ''}`).join(', ')
+        : newCaseRawInput;
+    if (!buildCustomCase(inputText, newCaseOutput, -1, signature)) {
+      setCaseError("Couldn't parse this input — check the values match the format shown in the placeholders.");
+      return;
+    }
+    setAddingCase(true);
+    try {
+      const entry = await addCustomTestCase(id, inputText, newCaseOutput);
+      setCustomCases((cs) => [...cs, entry]);
+      setNewCaseValues({});
+      setNewCaseRawInput('');
+      setNewCaseOutput('');
+    } catch (err) {
+      setCaseError((err as Error).message);
+    } finally {
+      setAddingCase(false);
+    }
+  }
+
+  function startEditCase(c: CustomTestCase) {
+    setEditError(null);
+    setEditingCaseId(c.id);
+    const values: Record<string, string> = {};
+    for (const a of parseInputAssignments(c.inputText)) values[a.name] = a.source;
+    setEditValues(values);
+    setEditRawInput(c.inputText);
+    setEditOutput(c.outputText);
+  }
+
+  function cancelEditCase() {
+    setEditingCaseId(null);
+    setEditValues({});
+    setEditRawInput('');
+    setEditOutput('');
+    setEditError(null);
+  }
+
+  async function saveEditCase(paramNames: string[]) {
+    if (!editingCaseId) return;
+    setEditError(null);
+    const inputText =
+      paramNames.length > 0
+        ? paramNames.map((name) => `${name} = ${editValues[name] ?? ''}`).join(', ')
+        : editRawInput;
+    if (!buildCustomCase(inputText, editOutput, -1, signature)) {
+      setEditError("Couldn't parse this input — check the values match the format shown in the placeholders.");
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const entry = await updateCustomTestCase(id, editingCaseId, inputText, editOutput);
+      setCustomCases((cs) => cs.map((c) => (c.id === entry.id ? entry : c)));
+      cancelEditCase();
+    } catch (err) {
+      setEditError((err as Error).message);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function deleteTestCase(entryId: string) {
+    if (editingCaseId === entryId) cancelEditCase();
+    await deleteCustomTestCase(id, entryId);
+    setCustomCases((cs) => cs.filter((c) => c.id !== entryId));
+  }
+
   function copyError(error: string) {
     navigator.clipboard.writeText(error);
   }
@@ -229,10 +336,26 @@ export default function ProblemDetail() {
     if (language === 'java') return javaSignature ? { name: javaSignature.name, params: javaSignature.params.map((p) => p.name) } : null;
     return null;
   }, [code, language, javaSignature]);
-  const cases = useMemo(
-    () => (problem && RUNNABLE_LANGS.includes(language) ? parseExamples(problem.examples, signature) : []),
-    [problem, language, signature]
-  );
+  const cases = useMemo(() => {
+    if (!problem || !RUNNABLE_LANGS.includes(language)) return [];
+    const builtIn = parseExamples(problem.examples, signature);
+    const custom = customCases
+      .map((c, i) => buildCustomCase(c.inputText, c.outputText, -(i + 1), signature))
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+    return [...builtIn, ...custom];
+  }, [problem, language, signature, customCases]);
+
+  // Drives the add-test-case form: one field per parameter (named/ordered from the current
+  // language's signature), pre-filled with a hint from the first built-in example's values.
+  // Falls back to a single raw-text field when the signature can't be parsed at all.
+  const paramNames = signature?.params ?? [];
+  const firstExampleCase = cases.find((c) => c.exampleNum > 0);
+  const paramPlaceholders: Record<string, string> = {};
+  if (firstExampleCase) {
+    firstExampleCase.argNames.forEach((name, i) => {
+      paramPlaceholders[name] = firstExampleCase.argSources[i];
+    });
+  }
 
   async function runCode() {
     if (!signature) {
@@ -300,8 +423,11 @@ export default function ProblemDetail() {
 
         <div className="tabs">
           <button className={tab === 'description' ? 'tab active' : 'tab'} onClick={() => setTab('description')}>Description</button>
-          {problem.solutions ? (
-            <button className={tab === 'editorial' ? 'tab active' : 'tab'} onClick={() => setTab('editorial')}>Editorial</button>
+          <button className={tab === 'testcases' ? 'tab active' : 'tab'} onClick={() => setTab('testcases')}>
+            Test Cases{customCases.length > 0 ? ` (${customCases.length})` : ''}
+          </button>
+          {problem.solution ? (
+            <button className={tab === 'solution' ? 'tab active' : 'tab'} onClick={() => setTab('solution')}>Solution</button>
           ) : null}
           {problem.hints.length > 0 ? (
             <button className={tab === 'hints' ? 'tab active' : 'tab'} onClick={() => setTab('hints')}>Hints</button>
@@ -349,8 +475,118 @@ export default function ProblemDetail() {
             </div>
           )}
 
-          {tab === 'editorial' && (
-            <div className="editorial" dangerouslySetInnerHTML={{ __html: problem.solutions }} />
+          {tab === 'testcases' && (
+            <div className="testcases-tab">
+              <div className="testcases-section">
+                <strong>Examples (built-in)</strong>
+                {problem.examples.map((ex) => (
+                  <pre key={ex.example_num} className="example-text">{ex.example_text}</pre>
+                ))}
+              </div>
+
+              <div className="testcases-section">
+                <strong>Your test cases</strong>
+                {customCases.length === 0 && <div className="results-empty">No custom test cases yet.</div>}
+                {customCases.map((c) =>
+                  editingCaseId === c.id ? (
+                    <div key={c.id} className="custom-case-card editing">
+                      {paramNames.length > 0 ? (
+                        paramNames.map((name) => (
+                          <label key={name}>
+                            {name}
+                            <input
+                              value={editValues[name] ?? ''}
+                              onChange={(e) => setEditValues((v) => ({ ...v, [name]: e.target.value }))}
+                              placeholder={paramPlaceholders[name] ?? ''}
+                            />
+                          </label>
+                        ))
+                      ) : (
+                        <label>
+                          Input (couldn't detect parameter names from your code — enter it as{' '}
+                          <code>name = value, name2 = value2</code>)
+                          <input value={editRawInput} onChange={(e) => setEditRawInput(e.target.value)} />
+                        </label>
+                      )}
+                      <label>
+                        Expected Output
+                        <input value={editOutput} onChange={(e) => setEditOutput(e.target.value)} />
+                      </label>
+                      <div className="add-testcase-actions">
+                        <button
+                          onClick={() => saveEditCase(paramNames)}
+                          disabled={
+                            savingEdit ||
+                            !editOutput ||
+                            (paramNames.length > 0 ? paramNames.some((n) => !editValues[n]) : !editRawInput)
+                          }
+                        >
+                          {savingEdit ? 'Saving…' : 'Save changes'}
+                        </button>
+                        <button onClick={cancelEditCase} disabled={savingEdit}>Cancel</button>
+                      </div>
+                      {editError && <div className="result-error">{editError}</div>}
+                    </div>
+                  ) : (
+                    <div key={c.id} className="custom-case-card">
+                      <pre className="example-text">{`Input: ${c.inputText}\nOutput: ${c.outputText}`}</pre>
+                      <div className="history-actions">
+                        <button onClick={() => startEditCase(c)} disabled={editingCaseId !== null}>Edit</button>
+                        <button onClick={() => deleteTestCase(c.id)} disabled={editingCaseId !== null}>Delete</button>
+                      </div>
+                    </div>
+                  )
+                )}
+
+                <div className="add-testcase-form">
+                  {paramNames.length > 0 ? (
+                    paramNames.map((name) => (
+                      <label key={name}>
+                        {name}
+                        <input
+                          value={newCaseValues[name] ?? ''}
+                          onChange={(e) => setNewCaseValues((v) => ({ ...v, [name]: e.target.value }))}
+                          placeholder={paramPlaceholders[name] ?? ''}
+                        />
+                      </label>
+                    ))
+                  ) : (
+                    <label>
+                      Input (couldn't detect parameter names from your code — enter it as{' '}
+                      <code>name = value, name2 = value2</code>)
+                      <input
+                        value={newCaseRawInput}
+                        onChange={(e) => setNewCaseRawInput(e.target.value)}
+                        placeholder="nums = [2,7,11,15], target = 9"
+                      />
+                    </label>
+                  )}
+                  <label>
+                    Expected Output
+                    <input
+                      value={newCaseOutput}
+                      onChange={(e) => setNewCaseOutput(e.target.value)}
+                      placeholder={firstExampleCase?.outputSource ?? '[0,1]'}
+                    />
+                  </label>
+                  <button
+                    onClick={() => addTestCase(paramNames)}
+                    disabled={
+                      addingCase ||
+                      !newCaseOutput ||
+                      (paramNames.length > 0 ? paramNames.some((n) => !newCaseValues[n]) : !newCaseRawInput)
+                    }
+                  >
+                    {addingCase ? 'Adding…' : 'Add test case'}
+                  </button>
+                  {caseError && <div className="result-error">{caseError}</div>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'solution' && (
+            <div className="solution-content" dangerouslySetInnerHTML={{ __html: problem.solution }} />
           )}
 
           {tab === 'hints' && (
@@ -468,20 +704,23 @@ export default function ProblemDetail() {
           {results?.map((r) => (
             <div key={r.exampleNum} className={`result-card ${r.pass === true ? 'pass' : r.pass === false ? 'fail' : 'unknown'}`}>
               <div className="result-title">
-                Example {r.exampleNum}: {r.pass === true ? 'Passed' : r.pass === false ? 'Failed' : 'Could not verify'}
+                {r.exampleNum > 0 ? `Example ${r.exampleNum}` : `Custom case ${-r.exampleNum}`}:{' '}
+                {r.pass === true ? 'Passed' : r.pass === false ? 'Failed' : 'Could not verify'}
               </div>
               {r.error ? (
-                <div className="result-error-block">
-                  <div className="result-error">{r.error}</div>
-                  <div className="result-error-actions">
-                    <button onClick={() => copyError(r.error!)}>Copy error</button>
-                    <button onClick={() => copySolutionAndError(r.error!)}>Copy Solution + Error</button>
-                  </div>
-                </div>
+                <div className="result-error">{r.error}</div>
               ) : (
                 <div className="result-io">
                   <div>Output: <code>{r.actual}</code></div>
                   <div>Expected: <code>{r.expected}</code></div>
+                </div>
+              )}
+              {r.pass !== true && (
+                <div className="result-error-actions">
+                  <button onClick={() => copyError(r.error ?? `Output: ${r.actual}\nExpected: ${r.expected}`)}>Copy error</button>
+                  <button onClick={() => copySolutionAndError(r.error ?? `Output: ${r.actual}\nExpected: ${r.expected}`)}>
+                    Copy Solution + Error
+                  </button>
                 </div>
               )}
             </div>

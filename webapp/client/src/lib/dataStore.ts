@@ -20,7 +20,7 @@ export interface ProblemFile {
   follow_ups: string[];
   hints: string[];
   code_snippets: Record<string, string>;
-  solutions: string;
+  solution: string;
 }
 
 const BASE = import.meta.env.BASE_URL;
