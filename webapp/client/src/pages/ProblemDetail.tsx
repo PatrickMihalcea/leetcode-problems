@@ -37,6 +37,8 @@ const MONACO_LANG: Record<string, string> = {
 
 type Tab = 'description' | 'editorial' | 'hints' | 'history' | 'notes';
 
+const LANGUAGE_STORAGE_KEY = 'detailLanguage';
+
 export default function ProblemDetail() {
   const { id = '' } = useParams();
   const [problem, setProblem] = useState<ProblemDetailT | null>(null);
@@ -126,7 +128,10 @@ export default function ProblemDetail() {
       setProblem(p);
       setNotes(p.progress.notes || '');
       const langs = Object.keys(p.code_snippets);
-      const initialLang = langs.includes('javascript') ? 'javascript' : langs[0] || 'javascript';
+      const preferredLang = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      const initialLang =
+        (preferredLang && langs.includes(preferredLang) && preferredLang) ||
+        (langs.includes('javascript') ? 'javascript' : langs[0] || 'javascript');
       setLanguage(initialLang);
       setCode(p.savedCode[initialLang] ?? p.code_snippets[initialLang] ?? '');
     });
@@ -138,6 +143,7 @@ export default function ProblemDetail() {
     setLanguage(lang);
     setCode(problem.savedCode[lang] ?? problem.code_snippets[lang] ?? '');
     setResults(null);
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
   }
 
   function onCodeChange(value: string | undefined) {
@@ -189,6 +195,7 @@ export default function ProblemDetail() {
     setCode(entry.code);
     setResults(null);
     setSaveStatus('saving');
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, entry.language);
     saveCode(id, entry.language, entry.code).then(() => setSaveStatus('saved'));
   }
 
@@ -364,8 +371,14 @@ export default function ProblemDetail() {
 
       <div className="detail-right" style={{ width: `${100 - leftPct}%` }}>
         <div className="editor-toolbar">
-          <select value={language} onChange={(e) => switchLanguage(e.target.value)}>
-            {languages.map((l) => <option key={l} value={l}>{l}</option>)}
+          <select
+            value={language}
+            onChange={(e) => switchLanguage(e.target.value)}
+            title="⚡ = runs in-browser via the Run button"
+          >
+            {languages.map((l) => (
+              <option key={l} value={l}>{l}{RUNNABLE_LANGS.includes(l) ? ' ⚡' : ''}</option>
+            ))}
           </select>
           <span className="save-status">{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : ''}</span>
           <button onClick={saveSolutionSnapshot} disabled={savingSolution}>

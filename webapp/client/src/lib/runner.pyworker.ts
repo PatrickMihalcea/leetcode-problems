@@ -17,15 +17,37 @@ declare function importScripts(...urls: string[]): void;
 declare function loadPyodide(opts: { indexURL: string }): Promise<any>;
 
 const PYODIDE_VERSION = '314.0.2';
-const PYODIDE_BASE = `https://cdn.jsdelivr.net/npm/pyodide@${PYODIDE_VERSION}/`;
+// Try multiple CDNs in case one is blocked by an ad blocker, VPN, or corporate firewall.
+const PYODIDE_BASES = [
+  `https://cdn.jsdelivr.net/npm/pyodide@${PYODIDE_VERSION}/`,
+  `https://unpkg.com/pyodide@${PYODIDE_VERSION}/`,
+];
 
 const PREAMBLE = 'from typing import *\nimport json, collections, heapq, math, functools, itertools, bisect, re, string\n\n';
 
 let pyodideReady: Promise<any> | null = null;
 function getPyodide(): Promise<any> {
   if (!pyodideReady) {
-    importScripts(`${PYODIDE_BASE}pyodide.js`);
-    pyodideReady = loadPyodide({ indexURL: PYODIDE_BASE });
+    let loadedBase: string | null = null;
+    let lastError: unknown = null;
+    for (const base of PYODIDE_BASES) {
+      try {
+        importScripts(`${base}pyodide.js`);
+        loadedBase = base;
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    pyodideReady = loadedBase
+      ? loadPyodide({ indexURL: loadedBase })
+      : Promise.reject(
+          new Error(
+            `Could not load the Python runtime from any CDN (tried ${PYODIDE_BASES.length}). ` +
+              `This usually means an ad blocker, VPN, or network firewall is blocking cdn.jsdelivr.net / unpkg.com. ` +
+              `Last error: ${(lastError as Error)?.message ?? lastError}`
+          )
+        );
   }
   return pyodideReady;
 }
