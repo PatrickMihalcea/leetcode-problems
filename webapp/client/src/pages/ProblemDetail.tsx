@@ -214,6 +214,14 @@ export default function ProblemDetail() {
     setHistory((h) => h.filter((e) => e.id !== entryId));
   }
 
+  function copyError(error: string) {
+    navigator.clipboard.writeText(error);
+  }
+
+  function copySolutionAndError(error: string) {
+    navigator.clipboard.writeText(`--- Solution (${language}) ---\n${code}\n\n--- Error ---\n${error}`);
+  }
+
   const javaSignature = useMemo(() => (language === 'java' ? parseJavaSignature(code) : null), [code, language]);
   const signature = useMemo(() => {
     if (language === 'javascript') return parseJsSignature(code);
@@ -463,7 +471,13 @@ export default function ProblemDetail() {
                 Example {r.exampleNum}: {r.pass === true ? 'Passed' : r.pass === false ? 'Failed' : 'Could not verify'}
               </div>
               {r.error ? (
-                <div className="result-error">{r.error}</div>
+                <div className="result-error-block">
+                  <div className="result-error">{r.error}</div>
+                  <div className="result-error-actions">
+                    <button onClick={() => copyError(r.error!)}>Copy error</button>
+                    <button onClick={() => copySolutionAndError(r.error!)}>Copy Solution + Error</button>
+                  </div>
+                </div>
               ) : (
                 <div className="result-io">
                   <div>Output: <code>{r.actual}</code></div>
