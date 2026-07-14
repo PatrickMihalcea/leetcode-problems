@@ -51,6 +51,12 @@ const MONACO_LANG: Record<string, string> = {
 type Tab = 'description' | 'testcases' | 'solution' | 'hints' | 'history' | 'notes';
 
 const LANGUAGE_STORAGE_KEY = 'detailLanguage';
+const THEME_STORAGE_KEY = 'detailEditorTheme';
+
+const EDITOR_THEMES = [
+  { value: 'vs-dark', label: 'VS Dark' },
+  { value: 'dracula', label: 'Dracula' },
+];
 
 const JAVA_PHASE_LABELS: Record<JavaProgress, string> = {
   'loading-runtime': 'Loading the Java runtime…',
@@ -64,6 +70,7 @@ export default function ProblemDetail() {
   const [problem, setProblem] = useState<ProblemDetailT | null>(null);
   const [tab, setTab] = useState<Tab>('description');
   const [language, setLanguage] = useState('javascript');
+  const [editorTheme, setEditorTheme] = useState(() => localStorage.getItem(THEME_STORAGE_KEY) || 'vs-dark');
   const [code, setCode] = useState('');
   const [revealedHints, setRevealedHints] = useState(0);
   const [notes, setNotes] = useState('');
@@ -658,6 +665,18 @@ export default function ProblemDetail() {
               <option key={l} value={l}>{l}{RUNNABLE_LANGS.includes(l) ? ' ⚡' : ''}</option>
             ))}
           </select>
+          <select
+            value={editorTheme}
+            onChange={(e) => {
+              setEditorTheme(e.target.value);
+              localStorage.setItem(THEME_STORAGE_KEY, e.target.value);
+            }}
+            title="Editor theme"
+          >
+            {EDITOR_THEMES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
           <span className="save-status">{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : ''}</span>
           <button onClick={saveSolutionSnapshot} disabled={savingSolution}>
             {savingSolution ? 'Saving…' : 'Save Solution'}
@@ -683,7 +702,7 @@ export default function ProblemDetail() {
         >
           <Editor
             height="100%"
-            theme="vs-dark"
+            theme={editorTheme}
             language={MONACO_LANG[language] || 'plaintext'}
             value={code}
             onChange={onCodeChange}
