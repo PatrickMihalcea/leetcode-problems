@@ -6,6 +6,8 @@ import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 import { javaLanguage } from './javaMonarch';
+import { getCompletions } from './javaCompletion';
+import { isJavaAutocompleteEnabled } from './javaCompletionSettings';
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -60,5 +62,29 @@ monaco.editor.defineTheme('dracula', {
 });
 
 monaco.languages.setMonarchTokensProvider('java', javaLanguage);
+
+monaco.languages.registerCompletionItemProvider('java', {
+  triggerCharacters: ['.'],
+  provideCompletionItems(model, position) {
+    if (!isJavaAutocompleteEnabled()) return { suggestions: [] };
+
+    const lineTextBeforeCursor = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+    const members = getCompletions(model.getValue(), lineTextBeforeCursor);
+    if (members.length === 0) return { suggestions: [] };
+
+    const word = model.getWordUntilPosition(position);
+    const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
+
+    const suggestions: monaco.languages.CompletionItem[] = members.map((member) => ({
+      label: member.name,
+      kind: member.kind === 'method' ? monaco.languages.CompletionItemKind.Method : monaco.languages.CompletionItemKind.Field,
+      insertText: member.name + member.snippet,
+      insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      detail: member.detail,
+      range,
+    }));
+    return { suggestions };
+  },
+});
 
 loader.config({ monaco });

@@ -312,6 +312,8 @@ h2 { font-size: 18px; margin: 0; }
 }
 .save-status { font-size: 12px; color: var(--text-dim); flex: 1; }
 .run-btn { background: var(--accent); color: #1a1a1a; font-weight: 600; border: none; }
+.toggle-btn { color: var(--text-dim); }
+.toggle-btn.active { color: var(--accent); border-color: var(--accent); }
 .run-note { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
 
 .editor-wrapper {
