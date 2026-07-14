@@ -321,6 +321,25 @@ h2 { font-size: 18px; margin: 0; }
   flex: 0 0 auto;
 }
 
+.breakpoint-glyph::before {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 4px 0 0 4px;
+  border-radius: 50%;
+  background: var(--hard);
+}
+.debug-current-line { background: rgba(255, 192, 30, 0.15); }
+
+.debugger-panel { flex: 1; overflow-y: auto; min-height: 80px; display: flex; flex-direction: column; gap: 10px; }
+.debugger-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.debugger-toolbar button { font-size: 12px; padding: 4px 10px; }
+.debugger-body { display: flex; gap: 16px; flex-wrap: wrap; }
+.debugger-section { flex: 1; min-width: 160px; font-size: 13px; }
+.debugger-section ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.debugger-section code { font-size: 12px; color: var(--text-dim); }
+
 .results-panel { flex: 1; overflow-y: auto; min-height: 80px; }
 .results-empty { color: var(--text-dim); font-size: 13px; padding: 10px 0; }
 .result-card {

@@ -24,7 +24,7 @@ function equalityExpr(type: string, a: string, b: string): string {
   return `${a} == ${b}`;
 }
 
-function toStrExpr(type: string, v: string): string {
+export function toStrExpr(type: string, v: string): string {
   const arr = arrayDims(type);
   if (arr) return arr.dims === 1 ? `Arrays.toString(${v})` : `Arrays.deepToString(${v})`;
   if (type === 'String') return `("\\"" + ${v} + "\\"")`;

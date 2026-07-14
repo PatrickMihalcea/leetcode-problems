@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import Editor from '@monaco-editor/react';
+import Editor, { type OnMount } from '@monaco-editor/react';
+import type { editor as MonacoEditorNS } from 'monaco-editor';
 import {
   fetchProblem,
   saveCode,
@@ -22,6 +23,17 @@ import { parseJavaSignature } from '../lib/javaSignature';
 import { runJsAgainstCases } from '../lib/runCode';
 import { runPyAgainstCases } from '../lib/runPyCode';
 import { runJavaAgainstCases, type JavaProgress } from '../lib/runJavaCode';
+import {
+  runJavaDebug,
+  continueTo,
+  stepOver,
+  stepInto,
+  stepOut,
+  buildCallStack,
+  lastLineIndex,
+  type DebugResult,
+  type DebugProgress,
+} from '../lib/debugJavaCode';
 import type { RunResult } from '../lib/runner.worker';
 import { commitSolutionToGithub } from '../lib/github';
 
@@ -66,6 +78,14 @@ const JAVA_PHASE_LABELS: Record<JavaProgress, string> = {
   running: 'Running…',
 };
 
+const DEBUG_PHASE_LABELS: Record<DebugProgress, string> = {
+  'loading-runtime': 'Loading the Java runtime…',
+  'downloading-compiler': 'Downloading the Java compiler (first run only, ~20MB+)…',
+  compiling: 'Compiling…',
+  instrumenting: 'Instrumenting your code…',
+  running: 'Running…',
+};
+
 export default function ProblemDetail() {
   const { id = '' } = useParams();
   const [problem, setProblem] = useState<ProblemDetailT | null>(null);
@@ -78,6 +98,17 @@ export default function ProblemDetail() {
   const [running, setRunning] = useState(false);
   const [javaPhase, setJavaPhase] = useState<JavaProgress | null>(null);
   const [results, setResults] = useState<RunResult[] | null>(null);
+
+  const [debugging, setDebugging] = useState(false);
+  const [debugPhase, setDebugPhase] = useState<DebugProgress | null>(null);
+  const [debugTrace, setDebugTrace] = useState<DebugResult | null>(null);
+  const [stepIndex, setStepIndex] = useState(-1);
+  const [breakpoints, setBreakpoints] = useState<Set<number>>(new Set());
+  const [debugCaseIdx, setDebugCaseIdx] = useState(0);
+  const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
+  const breakpointDecorationsRef = useRef<MonacoEditorNS.IEditorDecorationsCollection | null>(null);
+  const currentLineDecorationsRef = useRef<MonacoEditorNS.IEditorDecorationsCollection | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [githubStatus, setGithubStatus] = useState<'idle' | 'committing' | 'committed' | 'skipped' | 'error'>('idle');
@@ -166,6 +197,9 @@ export default function ProblemDetail() {
   useEffect(() => {
     setProblem(null);
     setResults(null);
+    setDebugTrace(null);
+    setStepIndex(-1);
+    setBreakpoints(new Set());
     setRevealedHints(0);
     setTab('description');
     setHistory([]);
@@ -199,6 +233,9 @@ export default function ProblemDetail() {
     setLanguage(lang);
     setCode(problem.savedCode[lang] ?? problem.code_snippets[lang] ?? '');
     setResults(null);
+    setDebugTrace(null);
+    setStepIndex(-1);
+    setBreakpoints(new Set());
     localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
   }
 
@@ -417,6 +454,76 @@ export default function ProblemDetail() {
       setRunning(false);
       setJavaPhase(null);
     }
+  }
+
+  const handleEditorMount: OnMount = (editorInstance, monacoInstance) => {
+    editorRef.current = editorInstance;
+    monacoRef.current = monacoInstance;
+    editorInstance.onMouseDown((e) => {
+      if (e.target.type !== monacoInstance.editor.MouseTargetType.GUTTER_GLYPH_MARGIN || !e.target.position) return;
+      const line = e.target.position.lineNumber;
+      setBreakpoints((bp) => {
+        const next = new Set(bp);
+        if (next.has(line)) next.delete(line);
+        else next.add(line);
+        return next;
+      });
+    });
+  };
+
+  // Keep the gutter's breakpoint dots in sync with `breakpoints` state.
+  useEffect(() => {
+    const ed = editorRef.current;
+    const mon = monacoRef.current;
+    if (!ed || !mon) return;
+    const decorations = [...breakpoints].map((line) => ({
+      range: new mon.Range(line, 1, line, 1),
+      options: { glyphMarginClassName: 'breakpoint-glyph', glyphMarginHoverMessage: { value: 'Breakpoint' } },
+    }));
+    if (!breakpointDecorationsRef.current) breakpointDecorationsRef.current = ed.createDecorationsCollection(decorations);
+    else breakpointDecorationsRef.current.set(decorations);
+  }, [breakpoints]);
+
+  // Highlight the current line for the step the debugger is stopped on.
+  useEffect(() => {
+    const ed = editorRef.current;
+    const mon = monacoRef.current;
+    if (!ed || !mon) return;
+    const step = debugTrace?.steps[stepIndex];
+    if (step?.event === 'line' && step.line) {
+      const decorations = [
+        { range: new mon.Range(step.line, 1, step.line, 1), options: { isWholeLine: true, className: 'debug-current-line' } },
+      ];
+      if (!currentLineDecorationsRef.current) currentLineDecorationsRef.current = ed.createDecorationsCollection(decorations);
+      else currentLineDecorationsRef.current.set(decorations);
+      ed.revealLineInCenter(step.line);
+    } else {
+      currentLineDecorationsRef.current?.set([]);
+    }
+  }, [debugTrace, stepIndex]);
+
+  async function startDebug() {
+    if (!javaSignature || cases.length === 0) return;
+    const testCase = cases[debugCaseIdx] ?? cases[0];
+    setDebugging(true);
+    setDebugTrace(null);
+    setStepIndex(-1);
+    setDebugPhase(null);
+    try {
+      const result = await runJavaDebug(code, javaSignature, { argSources: testCase.argSources }, setDebugPhase);
+      setDebugTrace(result);
+      if (result.status === 'ok' && result.steps.length > 0) {
+        setStepIndex(stepInto(result.steps, -1));
+      }
+    } finally {
+      setDebugging(false);
+      setDebugPhase(null);
+    }
+  }
+
+  function stopDebug() {
+    setDebugTrace(null);
+    setStepIndex(-1);
   }
 
   if (!problem) return <div className="page">Loading...</div>;
@@ -715,6 +822,25 @@ export default function ProblemDetail() {
           <button className="run-btn" onClick={runCode} disabled={!RUNNABLE_LANGS.includes(language) || running}>
             {running ? (language === 'java' && javaPhase ? JAVA_PHASE_LABELS[javaPhase] : 'Running…') : 'Run'}
           </button>
+          {language === 'java' && (
+            <>
+              <select
+                value={debugCaseIdx}
+                onChange={(e) => setDebugCaseIdx(Number(e.target.value))}
+                disabled={cases.length === 0 || debugging}
+                title="Test case to debug"
+              >
+                {cases.map((c, i) => (
+                  <option key={c.exampleNum} value={i}>
+                    {c.exampleNum > 0 ? `Example ${c.exampleNum}` : `Custom case ${-c.exampleNum}`}
+                  </option>
+                ))}
+              </select>
+              <button className="run-btn" onClick={startDebug} disabled={cases.length === 0 || debugging || running}>
+                {debugging ? (debugPhase ? DEBUG_PHASE_LABELS[debugPhase] : 'Starting…') : 'Debug'}
+              </button>
+            </>
+          )}
         </div>
         {!RUNNABLE_LANGS.includes(language) && (
           <div className="run-note">Auto-run works for JavaScript, Python, and Java here — other languages save your code but don't execute it.</div>
@@ -723,6 +849,11 @@ export default function ProblemDetail() {
           <div className="run-note">
             {javaPhase ? JAVA_PHASE_LABELS[javaPhase] : 'Starting…'} Java code can't be safely cancelled once started —
             if this seems stuck for more than ~30s, reloading the page is the only way to stop it.
+          </div>
+        )}
+        {language === 'java' && debugging && (
+          <div className="run-note">
+            {debugPhase ? DEBUG_PHASE_LABELS[debugPhase] : 'Starting…'} Click a line's left margin to set a breakpoint.
           </div>
         )}
 
@@ -737,7 +868,8 @@ export default function ProblemDetail() {
             language={MONACO_LANG[language] || 'plaintext'}
             value={code}
             onChange={onCodeChange}
-            options={{ minimap: { enabled: false }, fontSize: 14, tabSize: 2 }}
+            onMount={handleEditorMount}
+            options={{ minimap: { enabled: false }, fontSize: 14, tabSize: 2, glyphMargin: true }}
           />
         </div>
 
@@ -745,6 +877,77 @@ export default function ProblemDetail() {
           className={dragging === 'row' ? 'row-resizer active' : 'row-resizer'}
           onMouseDown={startRowResize}
         />
+
+        {language === 'java' && debugTrace && (
+          <div className="debugger-panel">
+            {debugTrace.status === 'error' ? (
+              <div className="result-error">{debugTrace.error}</div>
+            ) : (
+              <>
+                <div className="debugger-toolbar">
+                  <button
+                    onClick={() => setStepIndex((i) => continueTo(debugTrace.steps, i, breakpoints))}
+                    disabled={stepIndex >= lastLineIndex(debugTrace.steps)}
+                  >
+                    Continue
+                  </button>
+                  <button
+                    onClick={() => setStepIndex((i) => stepOver(debugTrace.steps, i))}
+                    disabled={stepIndex >= lastLineIndex(debugTrace.steps)}
+                  >
+                    Step Over
+                  </button>
+                  <button
+                    onClick={() => setStepIndex((i) => stepInto(debugTrace.steps, i))}
+                    disabled={stepIndex >= lastLineIndex(debugTrace.steps)}
+                  >
+                    Step Into
+                  </button>
+                  <button
+                    onClick={() => setStepIndex((i) => stepOut(debugTrace.steps, i))}
+                    disabled={stepIndex >= lastLineIndex(debugTrace.steps)}
+                  >
+                    Step Out
+                  </button>
+                  <button onClick={stopDebug}>Stop</button>
+                </div>
+                {debugTrace.truncated && (
+                  <div className="run-note">Trace truncated at 5000 steps (likely an infinite loop or very deep recursion).</div>
+                )}
+                {stepIndex >= lastLineIndex(debugTrace.steps) && (
+                  <div className="run-note">Program finished. Returned: <code>{debugTrace.returnValue}</code></div>
+                )}
+                <div className="debugger-body">
+                  <div className="debugger-section">
+                    <strong>Call Stack</strong>
+                    <ul>
+                      {buildCallStack(debugTrace.steps, stepIndex)
+                        .slice()
+                        .reverse()
+                        .map((f, i) => (
+                          <li key={i}>{f.method}</li>
+                        ))}
+                    </ul>
+                  </div>
+                  <div className="debugger-section">
+                    <strong>Variables</strong>
+                    {debugTrace.steps[stepIndex]?.event === 'line' ? (
+                      <ul>
+                        {Object.entries(debugTrace.steps[stepIndex].locals ?? {}).map(([name, value]) => (
+                          <li key={name}>
+                            <code>{name}</code> = <code>{value}</code>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="results-empty">No locals at this step.</div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="results-panel">
           {results === null && !running && <div className="results-empty">Run your code against the examples above.</div>}

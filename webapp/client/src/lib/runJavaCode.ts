@@ -16,8 +16,14 @@ const TOOLS_JAR_URLS = [
   'https://unpkg.com/dataslope-tools-jar@1.0.0/tools.jar',
   'https://raw.githubusercontent.com/leaningtech/javafiddle/main/static/tools.jar',
 ];
-const CLASSPATH = '/str/tools.jar:/files/';
+export const CLASSPATH = '/str/tools.jar:/files/';
 const TIMEOUT_MS = 30000;
+
+// Maven Central (and its Google Cloud mirror) don't send CORS headers, so these small ASM jars
+// (used only by the debugger's bytecode instrumenter) are vendored under public/asm/ and served
+// same-origin instead of fetched cross-origin like tools.jar.
+const ASM_JAR_URLS = [`${import.meta.env.BASE_URL}asm/asm-9.7.1.jar`, `${import.meta.env.BASE_URL}asm/asm-tree-9.7.1.jar`];
+export const DEBUG_CLASSPATH = `/str/tools.jar:/str/asm.jar:/str/asm-tree.jar:/files/`;
 
 export type JavaProgress =
   | 'loading-runtime'
@@ -26,7 +32,7 @@ export type JavaProgress =
   | 'running';
 
 let cheerpjReady: Promise<void> | null = null;
-function ensureCheerpj(): Promise<void> {
+export function ensureCheerpj(): Promise<void> {
   if (!cheerpjReady) {
     cheerpjReady = (async () => {
       await new Promise<void>((resolve, reject) => {
@@ -60,7 +66,7 @@ function ensureCheerpj(): Promise<void> {
 }
 
 let toolsJarReady: Promise<Uint8Array> | null = null;
-function ensureToolsJar(): Promise<Uint8Array> {
+export function ensureToolsJar(): Promise<Uint8Array> {
   if (!toolsJarReady) {
     toolsJarReady = (async () => {
       const errors: string[] = [];
@@ -79,16 +85,33 @@ function ensureToolsJar(): Promise<Uint8Array> {
   return toolsJarReady;
 }
 
-/** Splits on `|`, treating a backslash as an escape for the next character (mirrors the Java
- * driver's `escapeForLine`, which backslash-escapes `\`, `|`, and `\n` before printing). */
-function splitEscaped(s: string): string[] {
+/** ASM (bytecode instrumentation, used only by the debugger) — same-origin, so no CORS/fallback
+ * juggling needed like tools.jar. */
+let asmJarsReady: Promise<[Uint8Array, Uint8Array]> | null = null;
+export function ensureAsmJars(): Promise<[Uint8Array, Uint8Array]> {
+  if (!asmJarsReady) {
+    asmJarsReady = Promise.all(
+      ASM_JAR_URLS.map(async (url) => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to load ${url}: HTTP ${res.status}`);
+        return new Uint8Array(await res.arrayBuffer());
+      })
+    ) as Promise<[Uint8Array, Uint8Array]>;
+  }
+  return asmJarsReady;
+}
+
+/** Splits on `delim`, treating a backslash as an escape for the next character (mirrors the Java
+ * driver's `escapeForLine`, which backslash-escapes `\`, `|`, and `\n` before printing — the
+ * debugger's trace protocol reuses this for its own `;`/`=` sub-delimiters). */
+export function splitEscaped(s: string, delim = '|'): string[] {
   const parts: string[] = [];
   let current = '';
   for (let i = 0; i < s.length; i++) {
     if (s[i] === '\\' && i + 1 < s.length) {
       current += s[i + 1];
       i++;
-    } else if (s[i] === '|') {
+    } else if (s[i] === delim) {
       parts.push(current);
       current = '';
     } else {
@@ -161,7 +184,7 @@ async function runJavaAgainstCasesInner(
   consoleEl.innerText = '';
 
   onProgress?.('compiling');
-  const compileCode = await cheerpjRunMain('com.sun.tools.javac.Main', CLASSPATH, '/str/Main.java', '-d', '/files/');
+  const compileCode = await cheerpjRunMain('com.sun.tools.javac.Main', CLASSPATH, '/str/Main.java', '-g', '-d', '/files/');
   if (compileCode !== 0) {
     return errorResults(cases, `Compile error:\n${consoleEl.innerText || '(no compiler output)'}`);
   }
