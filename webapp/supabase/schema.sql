@@ -56,10 +56,23 @@ create table if not exists custom_test_cases (
 create index if not exists custom_test_cases_user_problem_idx
   on custom_test_cases (user_id, problem_id, created_at);
 
+-- One row per user tracking their linked GitHub account, chosen repo, and OAuth token.
+-- No RLS policies are granted here on purpose: the access_token must never reach the
+-- browser, so this table is only ever read/written by the "github" Edge Function via
+-- the service-role key -- not even the row's own owner can select it directly.
+create table if not exists github_connections (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  access_token text not null,
+  github_login text not null,
+  repo_full_name text,
+  created_at timestamptz not null default now()
+);
+
 alter table progress enable row level security;
 alter table saved_code enable row level security;
 alter table solution_history enable row level security;
 alter table custom_test_cases enable row level security;
+alter table github_connections enable row level security;
 
 drop policy if exists "Users manage their own progress" on progress;
 create policy "Users manage their own progress"

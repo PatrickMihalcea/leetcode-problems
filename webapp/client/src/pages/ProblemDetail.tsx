@@ -23,6 +23,7 @@ import { runJsAgainstCases } from '../lib/runCode';
 import { runPyAgainstCases } from '../lib/runPyCode';
 import { runJavaAgainstCases, type JavaProgress } from '../lib/runJavaCode';
 import type { RunResult } from '../lib/runner.worker';
+import { commitSolutionToGithub } from '../lib/github';
 
 const RUNNABLE_LANGS = ['javascript', 'python3', 'java'];
 
@@ -79,6 +80,8 @@ export default function ProblemDetail() {
   const [results, setResults] = useState<RunResult[] | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [githubStatus, setGithubStatus] = useState<'idle' | 'committing' | 'committed' | 'skipped' | 'error'>('idle');
+  const [githubMessage, setGithubMessage] = useState<string | null>(null);
 
   const [history, setHistory] = useState<SolutionHistoryEntry[]>([]);
   const [savingSolution, setSavingSolution] = useState(false);
@@ -240,6 +243,26 @@ export default function ProblemDetail() {
       setHistory((h) => [entry, ...h]);
     } finally {
       setSavingSolution(false);
+    }
+
+    if (!problem) return;
+    setGithubStatus('committing');
+    setGithubMessage(null);
+    try {
+      const result = await commitSolutionToGithub(problem.frontend_id, problem.title, language, code);
+      if ('committed' in result) {
+        setGithubStatus('committed');
+      } else {
+        setGithubStatus('skipped');
+        setGithubMessage(
+          result.reason === 'not_connected'
+            ? 'Connect GitHub in Settings to back this up as a commit.'
+            : 'Pick a repo in Settings to back this up as a commit.'
+        );
+      }
+    } catch (err) {
+      setGithubStatus('error');
+      setGithubMessage((err as Error).message);
     }
   }
 
@@ -681,6 +704,14 @@ export default function ProblemDetail() {
           <button onClick={saveSolutionSnapshot} disabled={savingSolution}>
             {savingSolution ? 'Saving…' : 'Save Solution'}
           </button>
+          {githubStatus !== 'idle' && (
+            <span className="save-status" title={githubMessage ?? undefined}>
+              {githubStatus === 'committing' && 'Syncing to GitHub…'}
+              {githubStatus === 'committed' && '✓ Synced to GitHub'}
+              {githubStatus === 'skipped' && (githubMessage ?? 'Not synced to GitHub')}
+              {githubStatus === 'error' && `⚠ GitHub sync failed`}
+            </span>
+          )}
           <button className="run-btn" onClick={runCode} disabled={!RUNNABLE_LANGS.includes(language) || running}>
             {running ? (language === 'java' && javaPhase ? JAVA_PHASE_LABELS[javaPhase] : 'Running…') : 'Run'}
           </button>

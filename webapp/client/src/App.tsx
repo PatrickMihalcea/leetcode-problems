@@ -2,6 +2,8 @@ import { Routes, Route, NavLink } from 'react-router-dom';
 import ProblemList from './pages/ProblemList';
 import ProblemDetail from './pages/ProblemDetail';
 import Dashboard from './pages/Dashboard';
+import Settings from './pages/Settings';
+import GithubCallback from './pages/GithubCallback';
 import Login from './components/Login';
 import { useAuth } from './lib/AuthProvider';
 import { supabaseConfigured } from './lib/supabaseClient';
@@ -28,6 +30,9 @@ export default function App() {
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             Dashboard
           </NavLink>
+          <NavLink to="/settings" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            Settings
+          </NavLink>
         </nav>
         {session && (
           <div className="header-actions">
@@ -41,6 +46,8 @@ export default function App() {
           <Route path="/" element={<ProblemList />} />
           <Route path="/problem/:id" element={<ProblemDetail />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/github/callback" element={<GithubCallback />} />
         </Routes>
       </main>
     </div>

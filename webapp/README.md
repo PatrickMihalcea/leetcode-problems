@@ -14,9 +14,13 @@ synced through a free Supabase project.
 - **Your progress & code**: stored in a Supabase Postgres project, gated behind Supabase
   Auth (email + password). Sign in once per browser; the same account works from any
   machine. Row Level Security means only you can read or write your own rows.
+- **GitHub auto-commit** (optional): a single Supabase Edge Function
+  (`supabase/functions/github`) that holds your GitHub OAuth token server-side and calls
+  the GitHub API on your behalf — the only server-side code in the project.
 
-There is no backend server to run or host — everything after the static build talks
-directly to Supabase from the browser.
+There is no backend server to run or host for the core app — everything talks directly to
+Supabase from the browser. The GitHub sync feature is the one exception: it needs the Edge
+Function above so your GitHub token never reaches the browser.
 
 ## One-time setup
 
@@ -43,6 +47,32 @@ You only need to do this once, the first time you set this up.
 > you can turn this off under **Authentication -> Providers -> Email -> Confirm email** so
 > signup works immediately without a confirmation link.
 
+## GitHub auto-commit (optional)
+
+Lets "Save Solution" also commit your code to a repo of your choice, so solved problems show
+up in your GitHub contribution graph. Skip this section if you don't want it — everything else
+works without it.
+
+1. **Create a GitHub OAuth App**: [github.com/settings/developers](https://github.com/settings/developers)
+   -> **New OAuth App**. Homepage URL = your Pages URL from setup step 6. Authorization
+   callback URL = `https://<your-username>.github.io/leetcode-problems/github/callback`.
+   Copy the **Client ID** and generate a **Client secret**.
+2. Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and link it to your project
+   (`supabase login`, `supabase link --project-ref <your-project-ref>`).
+3. Deploy the Edge Function and set its secrets:
+   ```bash
+   cd webapp
+   supabase functions deploy github
+   supabase secrets set GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=...
+   ```
+   (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are injected
+   automatically into every Edge Function — no need to set those yourself.)
+4. Add one more repository secret (same place as step 4 above):
+   `VITE_GITHUB_CLIENT_ID` — the OAuth App's Client ID from step 1 (this one is public, safe
+   to ship in the client bundle).
+5. Push to `master` to redeploy the site, then go to **Settings** in the app and click
+   **Connect GitHub**.
+
 ## Local development
 
 ```bash
@@ -68,6 +98,9 @@ Opens at http://localhost:5173, reads/writes the same Supabase project as the ho
   History tab — keep as many solutions per problem as you want, expand any past entry to view
   its code, restore it back into the editor, or delete it. Separate from the continuous
   autosave of your current draft, so history only grows when you explicitly save one.
+- Optional GitHub sync: connect a GitHub account in Settings and every "Save Solution" also
+  commits the code to a repo you choose, as `ID_Title/language/ID_Title_Date.ext` — see
+  "GitHub auto-commit" below.
 
 ## Known limitations
 
