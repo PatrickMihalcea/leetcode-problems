@@ -131,6 +131,7 @@ h2 { font-size: 18px; margin: 0; }
 }
 .star { color: var(--accent); }
 .topics-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+.completed-cell { white-space: nowrap; color: var(--text-dim); }
 
 .badge {
   padding: 2px 8px;

@@ -29,7 +29,10 @@ export interface ListParams {
   sort?: string;
 }
 
-function toSummary(p: IndexEntry, progress: { solved: boolean; starred: boolean }): ProblemSummary {
+function toSummary(
+  p: IndexEntry,
+  progress: { solved: boolean; starred: boolean; solvedAt: string | null }
+): ProblemSummary {
   return {
     problem_id: p.problem_id,
     frontend_id: p.frontend_id,
@@ -39,13 +42,16 @@ function toSummary(p: IndexEntry, progress: { solved: boolean; starred: boolean 
     topics: p.topics,
     solved: progress.solved,
     starred: progress.starred,
+    solvedAt: progress.solvedAt,
   };
 }
 
 export async function fetchProblems(params: ListParams): Promise<ProblemListResponse> {
   const [index, progressMap] = await Promise.all([loadIndex(), getAllProgress()]);
 
-  let items = index.map((p) => toSummary(p, progressMap.get(p.problem_id) ?? { solved: false, starred: false }));
+  let items = index.map((p) =>
+    toSummary(p, progressMap.get(p.problem_id) ?? { solved: false, starred: false, solvedAt: null })
+  );
 
   const search = params.search?.trim().toLowerCase();
   if (search) {

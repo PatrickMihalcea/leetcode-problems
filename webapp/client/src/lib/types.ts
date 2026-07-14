@@ -9,6 +9,7 @@ export interface ProblemSummary {
   topics: string[];
   solved: boolean;
   starred: boolean;
+  solvedAt: string | null;
 }
 
 export interface Example {

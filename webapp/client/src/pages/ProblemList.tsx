@@ -102,6 +102,7 @@ export default function ProblemList() {
             <th>Title</th>
             <th>Difficulty</th>
             <th>Topics</th>
+            <th>Completed</th>
           </tr>
         </thead>
         <tbody>
@@ -120,6 +121,15 @@ export default function ProblemList() {
                 {p.topics.slice(0, 4).map((t) => (
                   <span key={t} className="topic-chip">{t}</span>
                 ))}
+              </td>
+              <td className="completed-cell">
+                {p.solvedAt
+                  ? new Date(p.solvedAt).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })
+                  : '—'}
               </td>
             </tr>
           ))}
