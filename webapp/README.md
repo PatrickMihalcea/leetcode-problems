@@ -55,8 +55,14 @@ works without it.
 
 1. **Create a GitHub OAuth App**: [github.com/settings/developers](https://github.com/settings/developers)
    -> **New OAuth App**. Homepage URL = your Pages URL from setup step 6. Authorization
-   callback URL = `https://<your-username>.github.io/leetcode-problems/github/callback`.
-   Copy the **Client ID** and generate a **Client secret**.
+   callback URL = `https://<your-username>.github.io/leetcode-problems/#/github/callback`
+   — note the `#/`: the app is a HashRouter SPA, so the callback route lives after the
+   hash, and GitHub requires this to match exactly. Copy the **Client ID** and generate a
+   **Client secret**.
+   > A GitHub OAuth App only supports one callback URL. If you also want to test this
+   > locally, either swap the callback URL to `http://localhost:5173/#/github/callback`
+   > while testing, or create a second OAuth App just for local dev with its own
+   > `VITE_GITHUB_CLIENT_ID` in `webapp/client/.env`.
 2. Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and link it to your project
    (`supabase login`, `supabase link --project-ref <your-project-ref>`).
 3. Deploy the Edge Function and set its secrets:

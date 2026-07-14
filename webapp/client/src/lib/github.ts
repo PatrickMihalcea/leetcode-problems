@@ -28,7 +28,10 @@ export function githubOAuthUrl(): string | null {
 
   const state = crypto.randomUUID();
   sessionStorage.setItem('githubOAuthState', state);
-  const redirectUri = `${window.location.origin}/github/callback`;
+  // The app is a HashRouter SPA served under a base path on GitHub Pages (e.g.
+  // https://<user>.github.io/leetcode-problems/), so the real in-app URL for the
+  // callback route includes both the Vite base and the "#/" router prefix.
+  const redirectUri = `${window.location.origin}${import.meta.env.BASE_URL}#/github/callback`;
   const params = new URLSearchParams({ client_id: clientId, scope: 'repo', redirect_uri: redirectUri, state });
   return `https://github.com/login/oauth/authorize?${params.toString()}`;
 }
