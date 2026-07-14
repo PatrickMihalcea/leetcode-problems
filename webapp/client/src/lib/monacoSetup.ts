@@ -6,8 +6,45 @@ import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 import { javaLanguage } from './javaMonarch';
-import { getCompletions } from './javaCompletion';
-import { isJavaAutocompleteEnabled } from './javaCompletionSettings';
+import { getCompletions as getJavaCompletions } from './javaCompletion';
+import { getCompletions as getPythonCompletions } from './pythonCompletion';
+import { isMemberAutocompleteEnabled } from './completionSettings';
+
+interface CompletionMember {
+  name: string;
+  kind: 'method' | 'field';
+  snippet: string;
+  detail: string;
+}
+
+/** Wires one of javaCompletion.ts/pythonCompletion.ts's heuristic `getCompletions` into Monaco for
+ * a given language — the two providers are otherwise identical, differing only in which language
+ * they're registered for and which member-lookup function backs them. */
+function registerMemberCompletionProvider(languageId: string, getCompletions: (source: string, linePrefix: string) => CompletionMember[]) {
+  monaco.languages.registerCompletionItemProvider(languageId, {
+    triggerCharacters: ['.'],
+    provideCompletionItems(model, position) {
+      if (!isMemberAutocompleteEnabled()) return { suggestions: [] };
+
+      const lineTextBeforeCursor = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+      const members = getCompletions(model.getValue(), lineTextBeforeCursor);
+      if (members.length === 0) return { suggestions: [] };
+
+      const word = model.getWordUntilPosition(position);
+      const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
+
+      const suggestions: monaco.languages.CompletionItem[] = members.map((member) => ({
+        label: member.name,
+        kind: member.kind === 'method' ? monaco.languages.CompletionItemKind.Method : monaco.languages.CompletionItemKind.Field,
+        insertText: member.name + member.snippet,
+        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+        detail: member.detail,
+        range,
+      }));
+      return { suggestions };
+    },
+  });
+}
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -63,28 +100,7 @@ monaco.editor.defineTheme('dracula', {
 
 monaco.languages.setMonarchTokensProvider('java', javaLanguage);
 
-monaco.languages.registerCompletionItemProvider('java', {
-  triggerCharacters: ['.'],
-  provideCompletionItems(model, position) {
-    if (!isJavaAutocompleteEnabled()) return { suggestions: [] };
-
-    const lineTextBeforeCursor = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
-    const members = getCompletions(model.getValue(), lineTextBeforeCursor);
-    if (members.length === 0) return { suggestions: [] };
-
-    const word = model.getWordUntilPosition(position);
-    const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
-
-    const suggestions: monaco.languages.CompletionItem[] = members.map((member) => ({
-      label: member.name,
-      kind: member.kind === 'method' ? monaco.languages.CompletionItemKind.Method : monaco.languages.CompletionItemKind.Field,
-      insertText: member.name + member.snippet,
-      insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      detail: member.detail,
-      range,
-    }));
-    return { suggestions };
-  },
-});
+registerMemberCompletionProvider('java', getJavaCompletions);
+registerMemberCompletionProvider('python', getPythonCompletions);
 
 loader.config({ monaco });

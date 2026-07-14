@@ -5,6 +5,7 @@
 // than the editor's default word-based suggestions — it only returns [] when it doesn't recognize
 // something, in which case Monaco's own default suggestions still apply.
 import { ARRAY_MEMBERS, STATIC_UTILITY_CLASSES, getMembers, type TypeMember } from './javaTypeStubs';
+import { extractChainExpression, splitTopLevelDots } from './chainParsing';
 
 /** Classes with static members that are also commonly used as a declared variable's type
  * (`Integer x = ...; x.` should offer instance members, not `Integer.parseInt`). */
@@ -68,74 +69,13 @@ export function inferDeclaredType(fullSource: string, identifier: string): Infer
   };
 }
 
-/** Splits `a.b(x).c(y)` into `['a', 'b(x)', 'c(y)']`, respecting parens so a `.` inside a call's
- * arguments doesn't split the chain. */
-function splitTopLevelDots(expr: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < expr.length; i++) {
-    const c = expr[i];
-    if (c === '(') depth++;
-    else if (c === ')') depth--;
-    else if (c === '.' && depth === 0) {
-      parts.push(expr.slice(start, i));
-      start = i + 1;
-    }
-  }
-  parts.push(expr.slice(start));
-  return parts;
-}
-
-/** Walks backward from the cursor (which sits right after the `.` the user just typed) to find the
- * full receiver expression, e.g. `"sb.append(x).append(y)"` out of `"... sb.append(x).append(y)."`.
- * Stops at the first character that can't be part of an identifier/call chain (whitespace, `=`,
- * `;`, an unmatched `(`, ...) — deliberately doesn't handle `this.`, casts, or ternaries. */
-function extractChainExpression(lineTextBeforeCursor: string): string | null {
-  if (!lineTextBeforeCursor.endsWith('.')) return null;
-  const end = lineTextBeforeCursor.length - 1;
-
-  let i = end;
-  let depth = 0;
-  while (i > 0) {
-    const c = lineTextBeforeCursor[i - 1];
-    if (c === ')') {
-      depth++;
-      i--;
-      continue;
-    }
-    if (c === '(') {
-      if (depth === 0) break;
-      depth--;
-      i--;
-      continue;
-    }
-    if (depth > 0) {
-      i--;
-      continue;
-    }
-    if (/[A-Za-z0-9_$.]/.test(c)) {
-      i--;
-      continue;
-    }
-    break;
-  }
-  // The scan above stops at whitespace, which sits right between `new` and the type name in
-  // `new StringBuilder()...` — extend back over a trailing `new` keyword so it isn't dropped.
-  const newKeyword = /new\s+$/.exec(lineTextBeforeCursor.slice(0, i));
-  if (newKeyword) i -= newKeyword[0].length;
-
-  const expr = lineTextBeforeCursor.slice(i, end);
-  return expr || null;
-}
-
 /** Full pipeline: what's being typed on this line, in this document -> the member list to suggest.
  * Handles both a bare receiver (`map.`) and a chain of calls (`sb.append(x).append(y).`,
  * `list.get(0).`, `map.get(k).`), resolving each call's return type via javaTypeStubs' `returnType`
  * tags. Bails to `[]` (falling back to Monaco's default suggestions) as soon as it hits a call it
  * doesn't have return-type info for, or anything that isn't a simple identifier/call chain. */
 export function getCompletions(fullSource: string, lineTextBeforeCursor: string): TypeMember[] {
-  const expr = extractChainExpression(lineTextBeforeCursor);
+  const expr = extractChainExpression(lineTextBeforeCursor, 'new');
   if (!expr) return [];
   const [first, ...calls] = splitTopLevelDots(expr);
 

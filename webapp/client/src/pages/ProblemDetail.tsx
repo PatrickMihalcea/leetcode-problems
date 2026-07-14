@@ -18,7 +18,7 @@ import type { SolutionHistoryEntry, CustomTestCase } from '../lib/api';
 import type { ProblemDetail as ProblemDetailT } from '../lib/types';
 import DifficultyBadge from '../components/DifficultyBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { isJavaAutocompleteEnabled, setJavaAutocompleteEnabled, subscribeJavaAutocompleteEnabled } from '../lib/javaCompletionSettings';
+import { isMemberAutocompleteEnabled, setMemberAutocompleteEnabled, subscribeMemberAutocompleteEnabled } from '../lib/completionSettings';
 import { parseExamples, parseJsSignature, parsePySignature, parseInputAssignments, buildCustomCase } from '../lib/exampleParser';
 import { parseJavaSignature } from '../lib/javaSignature';
 import { runJsAgainstCases } from '../lib/runCode';
@@ -93,7 +93,7 @@ export default function ProblemDetail() {
   const [tab, setTab] = useState<Tab>('description');
   const [language, setLanguage] = useState('javascript');
   const [editorTheme, setEditorTheme] = useState(() => localStorage.getItem(THEME_STORAGE_KEY) || 'vs-dark');
-  const autocompleteEnabled = useSyncExternalStore(subscribeJavaAutocompleteEnabled, isJavaAutocompleteEnabled);
+  const autocompleteEnabled = useSyncExternalStore(subscribeMemberAutocompleteEnabled, isMemberAutocompleteEnabled);
   const [code, setCode] = useState('');
   const [revealedHints, setRevealedHints] = useState(0);
   const [notes, setNotes] = useState('');
@@ -797,11 +797,11 @@ export default function ProblemDetail() {
               <option key={l} value={l}>{l}{RUNNABLE_LANGS.includes(l) ? ' ⚡' : ''}</option>
             ))}
           </select>
-          {language === 'java' && (
+          {(language === 'java' || language === 'python3') && (
             <button
               className={autocompleteEnabled ? 'toggle-btn active' : 'toggle-btn'}
-              onClick={() => setJavaAutocompleteEnabled(!autocompleteEnabled)}
-              title="Toggle Java member autocomplete (e.g. map.put, map.get)"
+              onClick={() => setMemberAutocompleteEnabled(!autocompleteEnabled)}
+              title="Toggle member autocomplete (e.g. map.put, seen.get)"
             >
               {autocompleteEnabled ? '✓ Autocomplete' : 'Autocomplete off'}
             </button>
