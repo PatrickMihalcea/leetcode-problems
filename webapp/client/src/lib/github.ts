@@ -15,6 +15,18 @@ export type CommitResult =
   | { committed: true; path: string; htmlUrl?: string }
   | { skipped: true; reason: 'not_connected' | 'no_repo' };
 
+export interface SyncItem {
+  frontendId: string;
+  title: string;
+  language: string;
+  code: string;
+}
+
+export type SyncResult =
+  | { committed: true; fileCount: number; htmlUrl?: string }
+  | { committed: false; reason: 'no_solutions' }
+  | { skipped: true; reason: 'not_connected' | 'no_repo' };
+
 async function call<T>(action: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke('github', { body: { action, ...args } });
   if (error) throw new Error(error.message);
@@ -70,4 +82,8 @@ export async function commitSolutionToGithub(
   code: string
 ): Promise<CommitResult> {
   return call<CommitResult>('commit', { frontendId, title, language, code });
+}
+
+export function syncAllSolutionsToGithub(items: SyncItem[]): Promise<SyncResult> {
+  return call<SyncResult>('sync-all', { items });
 }

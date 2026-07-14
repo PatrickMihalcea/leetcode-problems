@@ -51,6 +51,27 @@ function sanitizeTitle(title: string): string {
   return title.trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'Problem';
 }
 
+function buildFilePath(frontendId: string, title: string, language: string, date: string): string {
+  const safeTitle = sanitizeTitle(title);
+  const ext = EXT_BY_LANGUAGE[language] ?? 'txt';
+  const dirName = `${frontendId}_${safeTitle}`;
+  return `${dirName}/${language}/${dirName}_${date}.${ext}`;
+}
+
+/** Runs `items` through `fn` with at most `limit` in flight at once. */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 async function githubApi(token: string, path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`https://api.github.com${path}`, {
     ...init,
@@ -173,12 +194,8 @@ Deno.serve(async (req) => {
         return json({ error: 'Missing frontendId/title/language/code' }, 400);
       }
 
-      const safeTitle = sanitizeTitle(title);
-      const ext = EXT_BY_LANGUAGE[language] ?? 'txt';
       const date = new Date().toISOString().slice(0, 10);
-      const dirName = `${frontendId}_${safeTitle}`;
-      const fileName = `${dirName}_${date}.${ext}`;
-      const path = [dirName, language, fileName].map(encodeURIComponent).join('/');
+      const path = buildFilePath(frontendId, title, language, date).split('/').map(encodeURIComponent).join('/');
 
       const existingRes = await githubApi(conn.access_token, `/repos/${conn.repo_full_name}/contents/${path}`);
       const existingSha = existingRes.ok ? (await existingRes.json()).sha : undefined;
@@ -197,6 +214,81 @@ Deno.serve(async (req) => {
       }
       const result = await putRes.json();
       return json({ committed: true, path, htmlUrl: result.content?.html_url });
+    }
+
+    if (action === 'sync-all') {
+      if (!conn || !conn.repo_full_name) {
+        return json({ skipped: true, reason: !conn ? 'not_connected' : 'no_repo' });
+      }
+      const items = body.items as
+        | Array<{ frontendId: string; title: string; language: string; code: string }>
+        | undefined;
+      if (!Array.isArray(items) || items.length === 0) {
+        return json({ committed: false, reason: 'no_solutions' });
+      }
+
+      const repoRes = await githubApi(conn.access_token, `/repos/${conn.repo_full_name}`);
+      if (!repoRes.ok) return json({ error: 'Failed to load repo info' }, 502);
+      const repoInfo = await repoRes.json();
+      const branch = repoInfo.default_branch || 'main';
+
+      const date = new Date().toISOString().slice(0, 10);
+      const paths = items.map((item) => buildFilePath(item.frontendId, item.title, item.language, date));
+
+      const blobShas = await mapWithConcurrency(items, 6, async (item) => {
+        const blobRes = await githubApi(conn.access_token, `/repos/${conn.repo_full_name}/git/blobs`, {
+          method: 'POST',
+          body: JSON.stringify({ content: encodeBase64(new TextEncoder().encode(item.code)), encoding: 'base64' }),
+        });
+        if (!blobRes.ok) throw new Error('Failed to create a blob for one of the solutions');
+        return (await blobRes.json()).sha as string;
+      });
+
+      const treeEntries = paths.map((path, i) => ({ path, mode: '100644', type: 'blob', sha: blobShas[i] }));
+
+      const refRes = await githubApi(conn.access_token, `/repos/${conn.repo_full_name}/git/ref/heads/${branch}`);
+      const baseCommitSha = refRes.ok ? (await refRes.json()).object.sha : null;
+      const baseTreeSha = baseCommitSha
+        ? (await (await githubApi(conn.access_token, `/repos/${conn.repo_full_name}/git/commits/${baseCommitSha}`)).json()).tree.sha
+        : undefined;
+
+      const treeRes = await githubApi(conn.access_token, `/repos/${conn.repo_full_name}/git/trees`, {
+        method: 'POST',
+        body: JSON.stringify({ tree: treeEntries, ...(baseTreeSha ? { base_tree: baseTreeSha } : {}) }),
+      });
+      if (!treeRes.ok) return json({ error: 'Failed to create tree' }, 502);
+      const newTreeSha = (await treeRes.json()).sha;
+
+      const commitRes = await githubApi(conn.access_token, `/repos/${conn.repo_full_name}/git/commits`, {
+        method: 'POST',
+        body: JSON.stringify({
+          message: `Backfill ${items.length} saved solution${items.length === 1 ? '' : 's'} from LeetLocal`,
+          tree: newTreeSha,
+          ...(baseCommitSha ? { parents: [baseCommitSha] } : {}),
+        }),
+      });
+      if (!commitRes.ok) return json({ error: 'Failed to create commit' }, 502);
+      const newCommitSha = (await commitRes.json()).sha;
+
+      const updateRefRes = await githubApi(
+        conn.access_token,
+        baseCommitSha
+          ? `/repos/${conn.repo_full_name}/git/refs/heads/${branch}`
+          : `/repos/${conn.repo_full_name}/git/refs`,
+        {
+          method: baseCommitSha ? 'PATCH' : 'POST',
+          body: JSON.stringify(
+            baseCommitSha ? { sha: newCommitSha } : { ref: `refs/heads/${branch}`, sha: newCommitSha }
+          ),
+        }
+      );
+      if (!updateRefRes.ok) return json({ error: 'Failed to update branch ref' }, 502);
+
+      return json({
+        committed: true,
+        fileCount: items.length,
+        htmlUrl: `https://github.com/${conn.repo_full_name}/commit/${newCommitSha}`,
+      });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

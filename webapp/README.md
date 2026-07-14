@@ -59,10 +59,13 @@ works without it.
    — note the `#/`: the app is a HashRouter SPA, so the callback route lives after the
    hash, and GitHub requires this to match exactly. Copy the **Client ID** and generate a
    **Client secret**.
-   > A GitHub OAuth App only supports one callback URL. If you also want to test this
-   > locally, either swap the callback URL to `http://localhost:5173/#/github/callback`
-   > while testing, or create a second OAuth App just for local dev with its own
-   > `VITE_GITHUB_CLIENT_ID` in `webapp/client/.env`.
+   > A GitHub OAuth App only supports one callback URL, and the Edge Function's
+   > `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` secrets are fixed to whichever app you
+   > deployed against — so a second OAuth App for local testing won't work (the token
+   > exchange would use the wrong secret). To test locally, temporarily change this
+   > same app's callback URL to `http://localhost:5173/#/github/callback`, test against
+   > `npm run dev` (with the same `VITE_GITHUB_CLIENT_ID` in `webapp/client/.env`), then
+   > switch the callback URL back to the production one afterward.
 2. Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and link it to your project
    (`supabase login`, `supabase link --project-ref <your-project-ref>`).
 3. Deploy the Edge Function and set its secrets:
@@ -106,7 +109,9 @@ Opens at http://localhost:5173, reads/writes the same Supabase project as the ho
   autosave of your current draft, so history only grows when you explicitly save one.
 - Optional GitHub sync: connect a GitHub account in Settings and every "Save Solution" also
   commits the code to a repo you choose, as `ID_Title/language/ID_Title_Date.ext` — see
-  "GitHub auto-commit" below.
+  "GitHub auto-commit" below. A "Sync" button on the Settings page backfills every problem
+  you've ever saved a solution for into the repo in one commit, for solutions saved before
+  you connected GitHub.
 
 ## Known limitations
 

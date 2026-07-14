@@ -5,9 +5,13 @@ import {
   listGithubRepos,
   createGithubRepo,
   selectGithubRepo,
+  syncAllSolutionsToGithub,
   type GithubStatus,
   type GithubRepo,
+  type SyncItem,
 } from '../lib/github';
+import { getAllLatestSolutions } from '../lib/userProgress';
+import { loadIndex } from '../lib/dataStore';
 
 export default function Settings() {
   const [status, setStatus] = useState<GithubStatus | null>(null);
@@ -16,6 +20,8 @@ export default function Settings() {
   const [newRepoName, setNewRepoName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   useEffect(() => {
     getGithubStatus().then(setStatus).catch((err) => setError(err.message));
@@ -73,6 +79,36 @@ export default function Settings() {
     setStatus((s) => (s ? { ...s, repoFullName: null } : s));
   }
 
+  async function syncAll() {
+    setSyncing(true);
+    setSyncMessage(null);
+    setError(null);
+    try {
+      const [solutions, index] = await Promise.all([getAllLatestSolutions(), loadIndex()]);
+      const indexById = new Map(index.map((p) => [p.problem_id, p]));
+
+      const items: SyncItem[] = [];
+      for (const s of solutions) {
+        const problem = indexById.get(s.problemId);
+        if (!problem) continue; // solution for a problem no longer in the dataset
+        items.push({ frontendId: problem.frontend_id, title: problem.title, language: s.language, code: s.code });
+      }
+
+      const result = await syncAllSolutionsToGithub(items);
+      if ('committed' in result && result.committed) {
+        setSyncMessage(`Synced ${result.fileCount} solution${result.fileCount === 1 ? '' : 's'} in one commit.`);
+      } else if ('reason' in result && result.reason === 'no_solutions') {
+        setSyncMessage('No saved solutions to sync yet — use "Save Solution" on a problem first.');
+      } else {
+        setSyncMessage('Not synced — connect GitHub and pick a repo first.');
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <div className="page">
       <h1>Settings</h1>
@@ -122,12 +158,23 @@ export default function Settings() {
         )}
 
         {status?.connected && status.repoFullName && (
-          <div className="settings-row">
-            <p>
-              Connected as <strong>@{status.login}</strong> — committing solutions to{' '}
-              <strong>{status.repoFullName}</strong>.
-            </p>
-            <button onClick={changeRepo}>Change repo</button>
+          <div className="settings-repo-picker">
+            <div className="settings-row">
+              <p>
+                Connected as <strong>@{status.login}</strong> — committing solutions to{' '}
+                <strong>{status.repoFullName}</strong>.
+              </p>
+              <button onClick={changeRepo}>Change repo</button>
+            </div>
+            <div className="settings-row">
+              <button className="run-btn" onClick={syncAll} disabled={syncing}>
+                {syncing ? 'Syncing…' : 'Sync'}
+              </button>
+              <span className="dashboard-footnote">
+                Backfills every problem you've ever saved a solution for into this repo, as one commit.
+              </span>
+            </div>
+            {syncMessage && <p className="dashboard-footnote">{syncMessage}</p>}
           </div>
         )}
 

@@ -161,6 +161,32 @@ export async function getSolutionHistory(problemId: string): Promise<SolutionHis
   return entries;
 }
 
+export interface LatestSolution {
+  problemId: string;
+  language: string;
+  code: string;
+}
+
+/** Most recent saved-solution snapshot per problem/language, across every problem -- used for the "Sync" backfill. */
+export async function getAllLatestSolutions(): Promise<LatestSolution[]> {
+  if (!supabaseConfigured) return [];
+
+  const { data, error } = await supabase
+    .from('solution_history')
+    .select('problem_id, language, code, created_at')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const latest = new Map<string, LatestSolution>();
+  for (const row of data ?? []) {
+    const key = `${row.problem_id}:${row.language}`;
+    if (!latest.has(key)) {
+      latest.set(key, { problemId: row.problem_id, language: row.language, code: row.code });
+    }
+  }
+  return [...latest.values()];
+}
+
 export async function saveSolutionSnapshot(
   problemId: string,
   language: string,
