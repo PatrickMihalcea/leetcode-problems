@@ -95,7 +95,7 @@ async function runJavaDebugInner(
 ): Promise<DebugResult> {
   if (!isJavaSignatureSupported(signature)) {
     return errorResult(
-      'This problem uses a type not supported by the Java debugger yet (only int/long/double/boolean/char/String, their arrays, and List<Integer|String>/List<List<Integer>> are supported).'
+      'This problem uses a type not supported by the Java debugger yet (only int/long/double/boolean/char/String, arrays of those (any depth), and nested List<...> of Integer/Long/Double/String are supported).'
     );
   }
   const className = parseJavaClassName(code);

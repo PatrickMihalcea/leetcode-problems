@@ -164,7 +164,7 @@ async function runJavaAgainstCasesInner(
   if (!isJavaSignatureSupported(signature)) {
     return errorResults(
       cases,
-      'This problem uses a type not supported by Java auto-run yet (only int/long/double/boolean/char/String, their arrays, and List<Integer|String>/List<List<Integer>> are supported).'
+      'This problem uses a type not supported by Java auto-run yet (only int/long/double/boolean/char/String, arrays of those (any depth), and nested List<...> of Integer/Long/Double/String are supported).'
     );
   }
   const className = parseJavaClassName(code);

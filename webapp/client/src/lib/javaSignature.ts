@@ -11,16 +11,31 @@ export interface JavaSignature {
   params: JavaParam[];
 }
 
-/** Java types this v1 driver knows how to build literals for and compare. */
-export const SUPPORTED_JAVA_TYPES = new Set([
-  'int', 'long', 'double', 'boolean', 'char', 'String',
-  'int[]', 'long[]', 'double[]', 'boolean[]', 'char[]', 'String[]',
-  'int[][]', 'long[][]', 'double[][]', 'boolean[][]', 'String[][]',
-  'List<Integer>', 'List<Long>', 'List<Double>', 'List<String>', 'List<List<Integer>>',
-]);
+/** Scalar Java types this v1 driver knows how to build literals for and compare. */
+const SUPPORTED_SCALAR_TYPES = new Set(['int', 'long', 'double', 'boolean', 'char', 'String']);
 
+/** Boxed types allowed at the bottom of a `List<...>` nest (arrays use unboxed scalars instead). */
+const SUPPORTED_LIST_ELEMENT_TYPES = new Set(['Integer', 'Long', 'Double', 'String']);
+
+function isSupportedListElementType(type: string): boolean {
+  if (SUPPORTED_LIST_ELEMENT_TYPES.has(type)) return true;
+  const nestedMatch = /^List<(.+)>$/.exec(type);
+  return nestedMatch ? isSupportedListElementType(nestedMatch[1]) : false;
+}
+
+/** A type is supported if it's a scalar, an array (any depth) of a scalar, or a `List<...>`
+ *  (nested any depth) bottoming out in a boxed scalar — matching what `javaDriver`/`javaLiteral`
+ *  can actually build literals for and compare, regardless of nesting depth. */
 export function isSupportedJavaType(type: string): boolean {
-  return SUPPORTED_JAVA_TYPES.has(type);
+  if (SUPPORTED_SCALAR_TYPES.has(type)) return true;
+
+  const arrayMatch = /^(\w+)((?:\[\])+)$/.exec(type);
+  if (arrayMatch) return SUPPORTED_SCALAR_TYPES.has(arrayMatch[1]);
+
+  const listMatch = /^List<(.+)>$/.exec(type);
+  if (listMatch) return isSupportedListElementType(listMatch[1]);
+
+  return false;
 }
 
 /** Extracts method name, return type, and typed parameters from a `java` snippet like
