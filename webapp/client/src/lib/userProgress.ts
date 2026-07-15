@@ -1,13 +1,21 @@
 import { supabase, supabaseConfigured } from './supabaseClient';
+import type { SolveDifficulty } from './types';
 
 export interface ProgressState {
   solved: boolean;
   starred: boolean;
   notes: string;
   solvedAt: string | null;
+  solveDifficulty: SolveDifficulty;
 }
 
-const DEFAULT_PROGRESS: ProgressState = { solved: false, starred: false, notes: '', solvedAt: null };
+const DEFAULT_PROGRESS: ProgressState = {
+  solved: false,
+  starred: false,
+  notes: '',
+  solvedAt: null,
+  solveDifficulty: null,
+};
 
 const progressCache = new Map<string, ProgressState>();
 let bulkLoaded = false;
@@ -28,7 +36,9 @@ async function loadAllProgress(): Promise<void> {
         bulkLoaded = true;
         return;
       }
-      const { data, error } = await supabase.from('progress').select('problem_id, solved, starred, notes, solved_at');
+      const { data, error } = await supabase
+        .from('progress')
+        .select('problem_id, solved, starred, notes, solved_at, solve_difficulty');
       if (error) throw error;
       for (const row of data ?? []) {
         progressCache.set(row.problem_id, {
@@ -36,6 +46,7 @@ async function loadAllProgress(): Promise<void> {
           starred: !!row.starred,
           notes: row.notes ?? '',
           solvedAt: row.solved_at ?? null,
+          solveDifficulty: row.solve_difficulty ?? null,
         });
       }
       bulkLoaded = true;
@@ -56,12 +67,18 @@ export async function getProgress(problemId: string): Promise<ProgressState> {
 
   const { data, error } = await supabase
     .from('progress')
-    .select('solved, starred, notes, solved_at')
+    .select('solved, starred, notes, solved_at, solve_difficulty')
     .eq('problem_id', problemId)
     .maybeSingle();
   if (error) throw error;
   const state: ProgressState = data
-    ? { solved: !!data.solved, starred: !!data.starred, notes: data.notes ?? '', solvedAt: data.solved_at ?? null }
+    ? {
+        solved: !!data.solved,
+        starred: !!data.starred,
+        notes: data.notes ?? '',
+        solvedAt: data.solved_at ?? null,
+        solveDifficulty: data.solve_difficulty ?? null,
+      }
     : DEFAULT_PROGRESS;
   progressCache.set(problemId, state);
   return state;
@@ -88,6 +105,7 @@ export async function saveProgress(
       starred: merged.starred,
       notes: merged.notes,
       solved_at: solvedAt,
+      solve_difficulty: merged.solveDifficulty,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id,problem_id' }

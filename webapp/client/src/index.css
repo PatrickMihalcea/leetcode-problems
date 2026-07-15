@@ -10,6 +10,10 @@
   --easy: #00b8a3;
   --medium: #ffc01e;
   --hard: #ff375f;
+  --sd-red: #ff375f;
+  --sd-yellow: #ffc01e;
+  --sd-light-green: #9ccc65;
+  --sd-green: #2ecc71;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -108,6 +112,7 @@ h2 { font-size: 18px; margin: 0; }
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: fixed;
 }
 .problem-table th {
   text-align: left;
@@ -115,13 +120,29 @@ h2 { font-size: 18px; margin: 0; }
   color: var(--text-dim);
   border-bottom: 1px solid var(--border);
   font-weight: 500;
+  white-space: nowrap;
 }
 .problem-table td {
   padding: 10px;
   border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  overflow-wrap: break-word;
 }
 .problem-table tr:hover { background: var(--bg-panel); }
-.status-cell { width: 40px; }
+.problem-table th.sortable { cursor: pointer; user-select: none; }
+.problem-table th.sortable:hover { color: var(--text); }
+
+/* Proportional column widths so every column has stable room and none can squeeze
+   another out -- content (long titles, many topic chips) wraps within its own column
+   instead of fighting neighbors for space. */
+.col-status { width: 4%; }
+.col-num { width: 5%; }
+.col-title { width: 22%; }
+.col-difficulty { width: 9%; }
+.col-topics { width: 25%; }
+.col-completed { width: 15%; }
+.col-solve-difficulty { width: 20%; }
+
 .dot-solved {
   display: inline-block;
   width: 8px; height: 8px;
@@ -132,6 +153,15 @@ h2 { font-size: 18px; margin: 0; }
 .star { color: var(--accent); }
 .topics-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 .completed-cell { white-space: nowrap; color: var(--text-dim); }
+
+.solve-difficulty-select {
+  width: 100%;
+  border-left: 4px solid var(--border);
+}
+.solve-difficulty-select.sd-red { border-left-color: var(--sd-red); color: var(--sd-red); }
+.solve-difficulty-select.sd-yellow { border-left-color: var(--sd-yellow); color: var(--sd-yellow); }
+.solve-difficulty-select.sd-light_green { border-left-color: var(--sd-light-green); color: var(--sd-light-green); }
+.solve-difficulty-select.sd-green { border-left-color: var(--sd-green); color: var(--sd-green); }
 
 .badge {
   padding: 2px 8px;
@@ -468,6 +498,13 @@ h2 { font-size: 18px; margin: 0; }
 .dialog-box p { margin: 0 0 16px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dialog-confirm { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+.difficulty-choices { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.difficulty-choice { text-align: left; border-left: 4px solid transparent; }
+.difficulty-choice.sd-red { border-left-color: var(--sd-red); }
+.difficulty-choice.sd-yellow { border-left-color: var(--sd-yellow); }
+.difficulty-choice.sd-light_green { border-left-color: var(--sd-light-green); }
+.difficulty-choice.sd-green { border-left-color: var(--sd-green); }
 
 /* Dashboard */
 .dashboard-page h1 { margin-bottom: 18px; }

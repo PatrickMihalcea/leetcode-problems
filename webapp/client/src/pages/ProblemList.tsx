@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { fetchProblems, fetchTopics, fetchStats } from '../lib/api';
-import type { ProblemSummary, Stats } from '../lib/types';
+import { fetchProblems, fetchTopics, fetchStats, saveProgress } from '../lib/api';
+import type { ProblemSummary, SolveDifficulty, Stats } from '../lib/types';
 import DifficultyBadge from '../components/DifficultyBadge';
+import { SOLVE_DIFFICULTY_OPTIONS, solveDifficultyClass } from '../lib/solveDifficultyOptions';
 
 const PAGE_SIZE = 50;
 
@@ -12,6 +13,8 @@ export default function ProblemList() {
   const difficulty = params.get('difficulty') || '';
   const topic = params.get('topic') || '';
   const status = params.get('status') || '';
+  const sort = params.get('sort') || 'frontend_id';
+  const sortDir = params.get('dir') === 'desc' ? 'desc' : 'asc';
   const page = parseInt(params.get('page') || '1', 10);
 
   const [items, setItems] = useState<ProblemSummary[]>([]);
@@ -30,14 +33,24 @@ export default function ProblemList() {
 
   useEffect(() => {
     setLoading(true);
-    fetchProblems({ search, difficulty, topic, status: status as any, page, pageSize: PAGE_SIZE })
+    fetchProblems({ search, difficulty, topic, status: status as any, sort, sortDir, page, pageSize: PAGE_SIZE })
       .then((res) => {
         setItems(res.items);
         setTotal(res.total);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [search, difficulty, topic, status, page]);
+  }, [search, difficulty, topic, status, sort, sortDir, page]);
+
+  function toggleCompletedSort() {
+    if (sort !== 'completed') update({ sort: 'completed', dir: 'desc' });
+    else update({ dir: sortDir === 'desc' ? 'asc' : 'desc' });
+  }
+
+  function updateSolveDifficulty(problemId: string, value: SolveDifficulty) {
+    setItems((cur) => cur.map((p) => (p.problem_id === problemId ? { ...p, solveDifficulty: value } : p)));
+    saveProgress(problemId, { solveDifficulty: value }).catch(console.error);
+  }
 
   function update(patch: Record<string, string>) {
     const next = new URLSearchParams(params);
@@ -95,6 +108,15 @@ export default function ProblemList() {
       </div>
 
       <table className="problem-table">
+        <colgroup>
+          <col className="col-status" />
+          <col className="col-num" />
+          <col className="col-title" />
+          <col className="col-difficulty" />
+          <col className="col-topics" />
+          <col className="col-completed" />
+          <col className="col-solve-difficulty" />
+        </colgroup>
         <thead>
           <tr>
             <th></th>
@@ -102,13 +124,16 @@ export default function ProblemList() {
             <th>Title</th>
             <th>Difficulty</th>
             <th>Topics</th>
-            <th>Completed</th>
+            <th className="sortable" onClick={toggleCompletedSort}>
+              Completed{sort === 'completed' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+            </th>
+            <th>Solve Difficulty</th>
           </tr>
         </thead>
         <tbody>
           {items.map((p) => (
             <tr key={p.problem_id}>
-              <td className="status-cell">
+              <td>
                 {p.solved ? <span title="Solved" className="dot dot-solved" /> : null}
                 {p.starred ? <span title="Starred" className="star">★</span> : null}
               </td>
@@ -117,10 +142,12 @@ export default function ProblemList() {
                 <Link to={`/problem/${p.problem_id}`}>{p.title}</Link>
               </td>
               <td><DifficultyBadge difficulty={p.difficulty} /></td>
-              <td className="topics-cell">
-                {p.topics.slice(0, 4).map((t) => (
-                  <span key={t} className="topic-chip">{t}</span>
-                ))}
+              <td>
+                <div className="topics-cell">
+                  {p.topics.slice(0, 4).map((t) => (
+                    <span key={t} className="topic-chip">{t}</span>
+                  ))}
+                </div>
               </td>
               <td className="completed-cell">
                 {p.solvedAt
@@ -130,6 +157,20 @@ export default function ProblemList() {
                       year: 'numeric',
                     })
                   : '—'}
+              </td>
+              <td>
+                <select
+                  className={`solve-difficulty-select ${solveDifficultyClass(p.solveDifficulty)}`}
+                  value={p.solveDifficulty ?? ''}
+                  onChange={(e) =>
+                    updateSolveDifficulty(p.problem_id, (e.target.value || null) as SolveDifficulty)
+                  }
+                >
+                  <option value="">—</option>
+                  {SOLVE_DIFFICULTY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
               </td>
             </tr>
           ))}

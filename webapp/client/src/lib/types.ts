@@ -1,5 +1,8 @@
 export type Difficulty = 'Easy' | 'Medium' | 'Hard' | string;
 
+/** Self-rated recall/effort when solving, independent of the plain `solved` flag. */
+export type SolveDifficulty = 'red' | 'yellow' | 'light_green' | 'green' | null;
+
 export interface ProblemSummary {
   problem_id: string;
   frontend_id: string;
@@ -10,6 +13,7 @@ export interface ProblemSummary {
   solved: boolean;
   starred: boolean;
   solvedAt: string | null;
+  solveDifficulty: SolveDifficulty;
 }
 
 export interface Example {
@@ -32,7 +36,7 @@ export interface ProblemDetail {
   hints: string[];
   code_snippets: Record<string, string>;
   solution: string;
-  progress: { solved: boolean; starred: boolean; notes: string; solvedAt: string | null };
+  progress: { solved: boolean; starred: boolean; notes: string; solvedAt: string | null; solveDifficulty: SolveDifficulty };
   savedCode: Record<string, string>;
 }
 

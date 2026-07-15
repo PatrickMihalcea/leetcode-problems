@@ -15,9 +15,10 @@ import {
   deleteCustomTestCase,
 } from '../lib/api';
 import type { SolutionHistoryEntry, CustomTestCase } from '../lib/api';
-import type { ProblemDetail as ProblemDetailT } from '../lib/types';
+import type { ProblemDetail as ProblemDetailT, SolveDifficulty } from '../lib/types';
 import DifficultyBadge from '../components/DifficultyBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
+import SolveDifficultyDialog from '../components/SolveDifficultyDialog';
 import { isMemberAutocompleteEnabled, setMemberAutocompleteEnabled, subscribeMemberAutocompleteEnabled } from '../lib/completionSettings';
 import { parseExamples, parseJsSignature, parsePySignature, parseInputAssignments, buildCustomCase } from '../lib/exampleParser';
 import { parseJavaSignature } from '../lib/javaSignature';
@@ -119,6 +120,7 @@ export default function ProblemDetail() {
   const [history, setHistory] = useState<SolutionHistoryEntry[]>([]);
   const [savingSolution, setSavingSolution] = useState(false);
   const [showSaveOnSolve, setShowSaveOnSolve] = useState(false);
+  const [showDifficultyPrompt, setShowDifficultyPrompt] = useState(false);
 
   const [customCases, setCustomCases] = useState<CustomTestCase[]>([]);
   const [newCaseValues, setNewCaseValues] = useState<Record<string, string>>({});
@@ -256,7 +258,20 @@ export default function ProblemDetail() {
     const solved = !problem.progress.solved;
     await saveProgress(id, { solved });
     setProblem({ ...problem, progress: { ...problem.progress, solved } });
-    if (solved) setShowSaveOnSolve(true);
+    if (solved) setShowDifficultyPrompt(true);
+  }
+
+  async function selectSolveDifficulty(solveDifficulty: Exclude<SolveDifficulty, null>) {
+    setShowDifficultyPrompt(false);
+    if (!problem) return;
+    await saveProgress(id, { solveDifficulty });
+    setProblem({ ...problem, progress: { ...problem.progress, solveDifficulty } });
+    setShowSaveOnSolve(true);
+  }
+
+  function skipSolveDifficulty() {
+    setShowDifficultyPrompt(false);
+    setShowSaveOnSolve(true);
   }
 
   async function saveSolutionOnSolve() {
@@ -991,6 +1006,10 @@ export default function ProblemDetail() {
           ))}
         </div>
       </div>
+
+      {showDifficultyPrompt && (
+        <SolveDifficultyDialog onSelect={selectSolveDifficulty} onSkip={skipSolveDifficulty} />
+      )}
 
       {showSaveOnSolve && (
         <ConfirmDialog

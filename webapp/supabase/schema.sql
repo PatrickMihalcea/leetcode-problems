@@ -19,6 +19,13 @@ create table if not exists progress (
 -- Added after the initial release, for existing databases created before this column existed.
 alter table progress add column if not exists solved_at timestamptz;
 
+-- Self-rated recall/effort when solving: red = used solution, yellow = solved but used solution,
+-- light_green = solved with difficulty, green = solved cleanly. Independent of `solved`.
+alter table progress add column if not exists solve_difficulty text;
+alter table progress drop constraint if exists progress_solve_difficulty_check;
+alter table progress add constraint progress_solve_difficulty_check
+  check (solve_difficulty is null or solve_difficulty in ('red', 'yellow', 'light_green', 'green'));
+
 -- Your current in-progress draft per problem/language, overwritten as you type.
 create table if not exists saved_code (
   user_id uuid not null references auth.users(id) on delete cascade,

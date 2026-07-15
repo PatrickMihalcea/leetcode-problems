@@ -1,4 +1,4 @@
-import type { ProblemDetail, ProblemListResponse, ProblemSummary, Stats } from './types';
+import type { ProblemDetail, ProblemListResponse, ProblemSummary, SolveDifficulty, Stats } from './types';
 import { loadIndex, loadProblemFile, resolveProblemId, type IndexEntry } from './dataStore';
 import {
   getAllProgress,
@@ -27,11 +27,12 @@ export interface ListParams {
   page?: number;
   pageSize?: number;
   sort?: string;
+  sortDir?: 'asc' | 'desc';
 }
 
 function toSummary(
   p: IndexEntry,
-  progress: { solved: boolean; starred: boolean; solvedAt: string | null }
+  progress: { solved: boolean; starred: boolean; solvedAt: string | null; solveDifficulty: SolveDifficulty }
 ): ProblemSummary {
   return {
     problem_id: p.problem_id,
@@ -43,6 +44,7 @@ function toSummary(
     solved: progress.solved,
     starred: progress.starred,
     solvedAt: progress.solvedAt,
+    solveDifficulty: progress.solveDifficulty,
   };
 }
 
@@ -50,7 +52,10 @@ export async function fetchProblems(params: ListParams): Promise<ProblemListResp
   const [index, progressMap] = await Promise.all([loadIndex(), getAllProgress()]);
 
   let items = index.map((p) =>
-    toSummary(p, progressMap.get(p.problem_id) ?? { solved: false, starred: false, solvedAt: null })
+    toSummary(
+      p,
+      progressMap.get(p.problem_id) ?? { solved: false, starred: false, solvedAt: null, solveDifficulty: null }
+    )
   );
 
   const search = params.search?.trim().toLowerCase();
@@ -68,10 +73,19 @@ export async function fetchProblems(params: ListParams): Promise<ProblemListResp
   if (params.status === 'starred') items = items.filter((p) => p.starred);
 
   const sort = params.sort || 'frontend_id';
+  const dir = params.sortDir === 'desc' ? -1 : 1;
   items = [...items].sort((a, b) => {
-    if (sort === 'title') return a.title.localeCompare(b.title);
-    if (sort === 'difficulty') return a.difficulty.localeCompare(b.difficulty);
-    return (parseInt(a.frontend_id, 10) || 0) - (parseInt(b.frontend_id, 10) || 0);
+    if (sort === 'title') return dir * a.title.localeCompare(b.title);
+    if (sort === 'difficulty') return dir * a.difficulty.localeCompare(b.difficulty);
+    if (sort === 'completed') {
+      const aVal = a.solvedAt ? new Date(a.solvedAt).getTime() : null;
+      const bVal = b.solvedAt ? new Date(b.solvedAt).getTime() : null;
+      if (aVal === null && bVal === null) return 0;
+      if (aVal === null) return 1;
+      if (bVal === null) return -1;
+      return dir * (aVal - bVal);
+    }
+    return dir * ((parseInt(a.frontend_id, 10) || 0) - (parseInt(b.frontend_id, 10) || 0));
   });
 
   const total = items.length;
@@ -163,7 +177,7 @@ export async function saveCode(id: string, language: string, code: string): Prom
 
 export async function saveProgress(
   id: string,
-  patch: { solved?: boolean; starred?: boolean; notes?: string }
+  patch: { solved?: boolean; starred?: boolean; notes?: string; solveDifficulty?: SolveDifficulty }
 ): Promise<void> {
   const problemId = await resolveProblemId(id);
   await saveProgressRemote(problemId, patch);
